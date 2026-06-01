@@ -66,6 +66,180 @@
     }
     @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
 
+    #btn-instruct { background: #0f9b0f; }
+    #btn-instruct:disabled { background: #333; cursor: not-allowed; }
+
+    /* Instructions Modal Overlay */
+    #instructions-overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(10, 10, 26, 0.4);
+      backdrop-filter: blur(15px);
+      -webkit-backdrop-filter: blur(15px);
+      z-index: 20;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      pointer-events: auto;
+    }
+    .instructions-card {
+      width: 92%;
+      max-width: 860px;
+      height: 88%;
+      border-radius: 20px;
+      background: rgba(18, 18, 40, 0.92);
+      border: 1px solid rgba(233, 69, 96, 0.4);
+      box-shadow: 0 16px 60px 0 rgba(0, 0, 0, 0.7), 0 0 0 1px rgba(255,255,255,0.04);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      font-family: system-ui, -apple-system, sans-serif;
+    }
+    .instructions-header {
+      padding: 18px 28px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: rgba(233, 69, 96, 0.06);
+    }
+    .instructions-header h2 {
+      margin: 0; font-size: 18px; font-weight: 800; color: #fff;
+      letter-spacing: 2px; text-transform: uppercase;
+    }
+    .instructions-header-sub {
+      font-size: 12px; color: #888; font-weight: 400;
+      letter-spacing: 0.5px; margin-top: 2px;
+    }
+    .instructions-close {
+      background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1);
+      font-size: 20px; color: #aaa; cursor: pointer;
+      line-height: 1; transition: all 0.2s; border-radius: 8px;
+      width: 36px; height: 36px; display: flex; align-items: center; justify-content: center;
+    }
+    .instructions-close:hover { color: #fff; background: rgba(233,69,96,0.25); border-color: rgba(233,69,96,0.4); }
+
+    .instructions-generating {
+      flex: 1; display: flex; flex-direction: column; align-items: center;
+      justify-content: center; gap: 16px; color: #888;
+    }
+    .instructions-generating-spinner {
+      width: 40px; height: 40px;
+      border: 3px solid rgba(233, 69, 96, 0.15);
+      border-top-color: #e94560;
+      border-radius: 50%;
+      animation: spin 0.9s linear infinite;
+    }
+    .instructions-generating p { font-size: 14px; letter-spacing: 1px; text-transform: uppercase; }
+    
+    .instructions-body {
+      flex: 1;
+      padding: 24px 28px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 32px;
+    }
+    
+    .step-block {
+      border: 1px solid rgba(255, 255, 255, 0.07);
+      border-radius: 16px;
+      background: rgba(255, 255, 255, 0.02);
+      overflow: hidden;
+    }
+    .step-header {
+      padding: 12px 20px;
+      background: rgba(255, 255, 255, 0.03);
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .step-number {
+      background: #e94560;
+      color: #fff;
+      font-size: 11px;
+      font-weight: 800;
+      padding: 3px 10px;
+      border-radius: 20px;
+      letter-spacing: 1px;
+    }
+    .step-title {
+      font-size: 14px; font-weight: 700; color: #fff; margin: 0;
+      text-transform: uppercase; letter-spacing: 0.5px; flex: 1;
+    }
+    .step-piece-count {
+      font-size: 12px; color: #888; font-weight: 500;
+    }
+    .step-img-container {
+      width: 100%;
+      height: 380px;
+      overflow: hidden;
+      background: #0a0a1a;
+      position: relative;
+    }
+    .step-img {
+      width: 100%; height: 100%; object-fit: cover;
+    }
+    .step-img-label {
+      position: absolute;
+      bottom: 12px;
+      right: 14px;
+      background: rgba(0,0,0,0.6);
+      color: #888;
+      font-size: 11px;
+      padding: 4px 10px;
+      border-radius: 20px;
+      letter-spacing: 0.5px;
+    }
+    .step-pieces-section {
+      padding: 16px 20px 18px;
+    }
+    .step-pieces-label {
+      font-size: 11px; color: #e94560; font-weight: 700;
+      text-transform: uppercase; letter-spacing: 1.5px; margin-bottom: 12px;
+    }
+    .step-pieces-grid {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .step-piece-chip {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 8px;
+      padding: 6px 12px 6px 8px;
+    }
+    .step-piece-badge {
+      width: 28px;
+      height: 28px;
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 800;
+      font-size: 10px;
+      color: #fff;
+      text-shadow: 0 1px 2px rgba(0,0,0,0.6);
+      flex-shrink: 0;
+    }
+    .step-piece-name {
+      font-size: 12px;
+      color: #ddd;
+      font-weight: 500;
+    }
+    .step-piece-coord {
+      font-size: 11px;
+      color: #666;
+      font-family: monospace;
+    }
+
     #designing-overlay {
       position: absolute;
       top: 0;
@@ -210,7 +384,27 @@
     <input type="number" id="seed" placeholder="random">
     <button id="btn-gen">Generate</button>
     <button id="btn-rand">Random</button>
+    <button id="btn-instruct" style="display: none;">Instructions</button>
     <span id="loading">Solving...</span>
+  </div>
+
+  <div id="instructions-overlay">
+    <div class="instructions-card">
+      <div class="instructions-header">
+        <div>
+          <h2>Building Instructions</h2>
+          <div class="instructions-header-sub" id="instructions-sub">Generating...</div>
+        </div>
+        <button class="instructions-close" id="btn-instruct-close">&times;</button>
+      </div>
+      <div class="instructions-generating" id="instructions-generating" style="display:none;">
+        <div class="instructions-generating-spinner"></div>
+        <p>Rendering level screenshots...</p>
+      </div>
+      <div class="instructions-body" id="instructions-body" style="display:none;">
+        <!-- Steps will be injected dynamically -->
+      </div>
+    </div>
   </div>
   <script src="viewer_bridge.js"></script>
   <script src="flutter_bootstrap.js" async></script>
@@ -287,7 +481,7 @@
       card.style.display = 'block';
     }
 
-    // Listen for solve-done from viewer or Flutter
+    // Listen for solve-done or instructions from viewer or Flutter
     window.addEventListener('message', (event) => {
       const data = event.data;
       if (!data) return;
@@ -299,6 +493,8 @@
           document.getElementById('seed').value = data.seed;
         }
         showMandatoryPieces(data.pieces);
+      } else if (data.type === 'instructions_ready') {
+        renderInstructionsModal(data.steps);
       }
     });
 
@@ -308,6 +504,7 @@
       const loading = document.getElementById('loading');
       btnGen.disabled = true;
       btnRand.disabled = true;
+      document.getElementById('btn-instruct').style.display = 'none';
       loading.style.display = 'inline';
       
       document.getElementById('designing-overlay').style.display = 'flex';
@@ -324,6 +521,7 @@
       document.getElementById('btn-rand').disabled = false;
       document.getElementById('loading').style.display = 'none';
       document.getElementById('designing-overlay').style.display = 'none';
+      document.getElementById('btn-instruct').style.display = 'inline-block';
     }
 
     document.getElementById('btn-gen').addEventListener('click', () => {
@@ -340,6 +538,85 @@
         document.getElementById('btn-gen').click();
       }
     });
+
+    // Instructions modal logic
+    document.getElementById('btn-instruct').addEventListener('click', () => {
+      showInstructionsLoading();
+      if (viewer && viewer.contentWindow) {
+        viewer.contentWindow.postMessage({ type: 'get_instructions' }, '*');
+      }
+    });
+
+    document.getElementById('btn-instruct-close').addEventListener('click', () => {
+      document.getElementById('instructions-overlay').style.display = 'none';
+    });
+
+    function showInstructionsLoading() {
+      document.getElementById('instructions-overlay').style.display = 'flex';
+      const body = document.getElementById('instructions-body');
+      body.innerHTML = '';
+      body.style.display = 'none';
+      const gen = document.getElementById('instructions-generating');
+      if (gen) gen.style.display = 'flex';
+    }
+
+    function renderInstructionsModal(steps) {
+      const gen = document.getElementById('instructions-generating');
+      if (gen) gen.style.display = 'none';
+      const body = document.getElementById('instructions-body');
+      body.innerHTML = '';
+      body.style.display = 'flex';
+
+      // Update subtitle with step count
+      const sub = document.getElementById('instructions-sub');
+      if (sub) sub.textContent = `${steps.length} level${steps.length !== 1 ? 's' : ''} · build from bottom up`;
+
+      steps.forEach((step, idx) => {
+        const stepDiv = document.createElement('div');
+        stepDiv.className = 'step-block';
+
+        let label;
+        if (step.level === 0) {
+          label = 'Ground Level (Catchers)';
+        } else {
+          label = `Height Level ${step.level}`;
+        }
+
+        const piecesHtml = step.pieces.map(p => {
+          const id = p.id;
+          const color = pieceColors[id] || '#88c0ff';
+          const name = id === 19 ? 'Marble Catcher' : (pieceNames[id] || `Piece ${id}`);
+          const coord = p.origin ? `(${p.origin[0]}, ${p.origin[1]})` : '';
+          return `
+            <div class="step-piece-chip">
+              <div class="step-piece-badge" style="background:${color};">P${id}</div>
+              <div>
+                <div class="step-piece-name">${name}</div>
+                ${coord ? `<div class="step-piece-coord">${coord}</div>` : ''}
+              </div>
+            </div>`;
+        }).join('');
+
+        stepDiv.innerHTML = `
+          <div class="step-header">
+            <span class="step-number">STEP ${idx + 1}</span>
+            <span class="step-title">${label}</span>
+            <span class="step-piece-count">${step.pieces.length} piece${step.pieces.length !== 1 ? 's' : ''}</span>
+          </div>
+          <div class="step-img-container" style="position:relative;">
+            <img class="step-img" src="${step.img}" alt="Step ${idx + 1}">
+            <span class="step-img-label">Level ${step.level} view</span>
+          </div>
+          <div class="step-pieces-section">
+            <div class="step-pieces-label">Pieces to place</div>
+            <div class="step-pieces-grid">${piecesHtml}</div>
+          </div>
+        `;
+        body.appendChild(stepDiv);
+      });
+
+      document.getElementById('instructions-overlay').style.display = 'flex';
+    }
   </script>
   <script>
     // Bridge: Flutter -> Viewer
