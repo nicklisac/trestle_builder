@@ -17,7 +17,28 @@ void sendToViewer(Map<String, dynamic> msg) {
   } catch (_) {}
 }
 
+void hideViewerIframe() {
+  try {
+    final doc = _window['document'] as JSObject;
+    final iframe = doc.callMethod('getElementById'.toJS, 'viewer-iframe'.toJS) as JSObject?;
+    if (iframe != null) {
+      (iframe['style'] as JSObject)['zIndex'] = '-1'.toJS;
+    }
+  } catch (_) {}
+}
+
+void showViewerIframe() {
+  try {
+    final doc = _window['document'] as JSObject;
+    final iframe = doc.callMethod('getElementById'.toJS, 'viewer-iframe'.toJS) as JSObject?;
+    if (iframe != null) {
+      (iframe['style'] as JSObject)['zIndex'] = '1'.toJS;
+    }
+  } catch (_) {}
+}
+
 typedef WebSolveCallback = void Function(int? seed);
+typedef WebInstructionsCallback = void Function();
 
 void registerWebSolveCallback(WebSolveCallback callback) {
   _window['onViewerMessage'] = ((JSObject data) {
@@ -41,5 +62,13 @@ void registerWebSolveCallback(WebSolveCallback callback) {
     } catch (e) {
       // ignore
     }
+  }).toJS;
+}
+
+void registerWebInstructionsCallback(WebInstructionsCallback callback) {
+  _window['onFlutterInstructions'] = (() {
+    try {
+      callback();
+    } catch (_) {}
   }).toJS;
 }

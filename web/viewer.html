@@ -62,7 +62,7 @@
             background: rgba(15,15,35,0.9); padding: 14px 16px;
             border-radius: 10px; font-size: 12px;
             border: 1px solid rgba(233,69,96,0.2);
-            display: none; max-width: 280px;
+            display: none !important; max-width: 280px;
         }
         #chain-info h3 { margin-bottom: 8px; font-size: 13px; color: #e94560; }
         #chain-info p { color: #aaa; line-height: 1.6; margin: 3px 0; }
@@ -447,7 +447,8 @@
                 }
             } else {
                 marblePaths = [];
-                marbleSphere.visible = false;
+                activeMarbles.forEach(m => scene.remove(m.mesh));
+                activeMarbles = [];
                 document.getElementById('chain-info').style.display = 'none';
             }
 

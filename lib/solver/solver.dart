@@ -129,6 +129,8 @@ class Solver {
   final Set<int> usedIds = {};
   late final List<Piece> allOriented;
   final void Function(List<PlacedPiece>)? onProgress;
+  final void Function(int iteration, int length)? onBestFound;
+  final int maxIterations;
   int _iterations = 0;
   DateTime _lastUpdateTime;
   final List<int> mandatoryIds = [];
@@ -136,9 +138,11 @@ class Solver {
   Solver({
     required this.inventory,
     this.timeoutSec = 60.0,
+    this.maxIterations = 10000,
     this.maxTowers = 100,
     this.seed,
     this.onProgress,
+    this.onBestFound,
   })  : rng = LcgRng(seed ?? DateTime.now().millisecondsSinceEpoch % 1000000),
         startTime = DateTime.now(),
         _lastUpdateTime = DateTime.now() {
@@ -157,6 +161,7 @@ class Solver {
   }
 
   bool timedOut() {
+    if (_iterations >= maxIterations) return true;
     return DateTime.now().difference(startTime).inMilliseconds > timeoutSec * 1000;
   }
 
@@ -184,6 +189,9 @@ class Solver {
       final containsAllMandatory = mandatoryIds.every((id) => usedIds.contains(id));
       if (containsAllMandatory && validator.placed.length > best.length) {
         best = List.of(validator.placed);
+        if (onBestFound != null) {
+          onBestFound!(_iterations, best.length);
+        }
       }
       return;
     }

@@ -6,6 +6,7 @@ import '../solver/models.dart' as ts_models;
 import 'viewer_widget.dart';
 import 'legend_widget.dart';
 import 'mandatory_widget.dart';
+import 'instructions_overlay.dart';
 import 'viewer_js_stub.dart' if (dart.library.html) 'viewer_js_web.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -22,50 +23,63 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _solving = false;
   String? _error;
   List<int> _mandatoryPieces = [];
+  bool _showInstructions = false;
 
   Future<SolutionData?> _runSolverAsync(int? seed) async {
-    final solver = ts.Solver(
-      inventory: ts_models.INVENTORY,
-      timeoutSec: 30.0,
-      maxTowers: 100,
-      seed: seed,
-      onProgress: (placed) {
-        if (!mounted) return;
-        // Build intermediate SolutionData to render on the fly
-        final solution = SolutionData(
-          seed: seed,
-          pieceCount: placed.length,
-          towerCount: 0,
-          towerMap: const {},
-          pieces: placed.map((p) => PieceData(
-            pieceId: p.pieceId,
-            origin: [p.origin.x, p.origin.y, p.origin.z],
-            start: [p.start.x, p.start.y, p.start.z],
-            end: [p.end.x, p.end.y, p.end.z],
-            outputs: p.outputs.map((o) => [o.x, o.y, o.z]).toList(),
-            cells: p.cells.map((c) => [c.x, c.y, c.z]).toList(),
-            isSplitter: p.isSplitter,
-          )).toList(),
-        );
-        _viewerController.render(solution, seed: seed);
-      },
-    );
+    int currentSeed = seed ?? DateTime.now().millisecondsSinceEpoch % 1000000;
 
-    setState(() {
-      _mandatoryPieces = solver.mandatoryIds;
-    });
+    while (mounted) {
+      final solver = ts.Solver(
+        inventory: ts_models.INVENTORY,
+        timeoutSec: 3.0, // Back-up safety time limit per seed
+        maxIterations: 10000, // Strictly limit to 10,000 iterations!
+        maxTowers: 100,
+        seed: currentSeed,
+        onProgress: (placed) {
+          if (!mounted) return;
+          // Build intermediate SolutionData to render on the fly
+          final solution = SolutionData(
+            seed: currentSeed,
+            pieceCount: placed.length,
+            towerCount: 0,
+            towerMap: const {},
+            pieces: placed.map((p) => PieceData(
+              pieceId: p.pieceId,
+              origin: [p.origin.x, p.origin.y, p.origin.z],
+              start: [p.start.x, p.start.y, p.start.z],
+              end: [p.end.x, p.end.y, p.end.z],
+              outputs: p.outputs.map((o) => [o.x, o.y, o.z]).toList(),
+              cells: p.cells.map((c) => [c.x, c.y, c.z]).toList(),
+              isSplitter: p.isSplitter,
+            )).toList(),
+          );
+          _viewerController.render(solution, seed: currentSeed);
+        },
+      );
 
-    if (kIsWeb) {
-      sendToViewer({
-        'type': 'mandatory_pieces',
-        'seed': seed,
-        'pieces': solver.mandatoryIds,
+      setState(() {
+        _mandatoryPieces = solver.mandatoryIds;
       });
-    }
 
-    final result = await solver.solveDict();
-    if (result['found'] == true && result['solution'] != null) {
-      return SolutionData.fromJson(result['solution'] as Map<String, dynamic>);
+      if (kIsWeb) {
+        sendToViewer({
+          'type': 'mandatory_pieces',
+          'seed': currentSeed,
+          'pieces': solver.mandatoryIds,
+        });
+      }
+
+      final result = await solver.solveDict();
+      if (result['found'] == true && result['solution'] != null) {
+        // Solution successfully found! Update the controller to reflect the seed that worked
+        _seedController.text = currentSeed.toString();
+        return SolutionData.fromJson(result['solution'] as Map<String, dynamic>);
+      }
+
+      // No solution found in 10,000 iterations. Let's discard and reseed!
+      debugPrint('Seed $currentSeed had no solution in 10,000 iterations. Reseeding...');
+      currentSeed = DateTime.now().millisecondsSinceEpoch % 1000000;
+      await Future.delayed(Duration.zero); // Prevent locking the UI thread
     }
     return null;
   }
@@ -79,6 +93,7 @@ class _HomeScreenState extends State<HomeScreen> {
       _solving = true;
       _error = null;
       _mandatoryPieces = [];
+      _showInstructions = false;
     });
 
     await _viewerController.clear();
@@ -131,6 +146,13 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
     _viewerController.onSolve = _solveWithSeed;
+    if (kIsWeb) {
+      registerWebInstructionsCallback(() {
+        if (mounted && _solution != null) {
+          setState(() => _showInstructions = true);
+        }
+      });
+    }
   }
 
   Future<void> _solveWithSeed({int? seed}) async {
@@ -236,6 +258,17 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                     child: const Text('Random'),
                   ),
+                  const SizedBox(width: 8),
+                  if (_solution != null)
+                    ElevatedButton(
+                      onPressed: () => setState(() => _showInstructions = true),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF0f9b0f),
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+                      ),
+                      child: const Text('Instructions'),
+                    ),
                   const Spacer(),
                   if (_error != null)
                     Text(
@@ -264,6 +297,15 @@ class _HomeScreenState extends State<HomeScreen> {
                     ],
                   ],
                 ),
+              ),
+            ),
+
+          // Instructions overlay — shown when user taps Instructions button
+          if (_showInstructions && _solution != null)
+            Positioned.fill(
+              child: InstructionsOverlay(
+                solution: _solution!,
+                onClose: () => setState(() => _showInstructions = false),
               ),
             ),
         ],
