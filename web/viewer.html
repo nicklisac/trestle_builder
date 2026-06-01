@@ -1,0 +1,823 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Trestle Track Viewer</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: system-ui, -apple-system, sans-serif; background: #0f0f23; color: #eee; overflow: hidden; }
+
+        #ui {
+            position: absolute; top: 0; left: 0; right: 0; z-index: 10;
+            padding: 12px 20px;
+            background: linear-gradient(180deg, rgba(15,15,35,0.95) 0%, rgba(15,15,35,0.7) 100%);
+            display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+            border-bottom: 1px solid rgba(233,69,96,0.3);
+        }
+        #ui.label-only { background: none; border-bottom: none; padding: 8px 16px; }
+        #ui label { font-size: 13px; color: #888; }
+        #ui input {
+            padding: 7px 12px; border: 1px solid #444; border-radius: 6px;
+            background: #1a1a2e; color: #eee; width: 130px; font-size: 14px;
+        }
+        #ui input:focus { outline: none; border-color: #e94560; }
+        #ui button {
+            padding: 7px 18px; border: none; border-radius: 6px;
+            font-size: 14px; font-weight: 600; cursor: pointer; transition: background 0.15s;
+        }
+        #btn-gen { background: #e94560; color: #fff; }
+        #btn-gen:hover { background: #c73650; }
+        #btn-gen:disabled { background: #555; cursor: not-allowed; }
+        #btn-rand { background: #533483; color: #fff; }
+        #btn-rand:hover { background: #3f2768; }
+        #info {
+            margin-left: auto; font-size: 13px; color: #888;
+            display: flex; gap: 16px; align-items: center;
+        }
+        #info span { color: #e94560; font-weight: 700; }
+        #loading {
+            display: none; color: #e94560; font-size: 13px;
+            animation: pulse 1s infinite;
+        }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+
+        #canvas { width: 100vw; height: 100vh; }
+
+        #legend {
+            position: absolute; bottom: 16px; left: 16px; z-index: 10;
+            background: rgba(15,15,35,0.9); padding: 14px 16px;
+            border-radius: 10px; font-size: 12px;
+            max-height: 55vh; overflow-y: auto;
+            border: 1px solid rgba(233,69,96,0.2);
+            display: none;
+        }
+        #legend h3 { margin-bottom: 8px; font-size: 13px; color: #e94560; letter-spacing: 0.5px; }
+        .legend-item { display: flex; align-items: center; gap: 8px; margin: 4px 0; }
+        .legend-color { width: 16px; height: 16px; border-radius: 4px; border: 1px solid rgba(255,255,255,0.15); flex-shrink: 0; }
+        .legend-label { color: #ccc; }
+
+        #chain-info {
+            position: absolute; bottom: 16px; right: 16px; z-index: 10;
+            background: rgba(15,15,35,0.9); padding: 14px 16px;
+            border-radius: 10px; font-size: 12px;
+            border: 1px solid rgba(233,69,96,0.2);
+            display: none; max-width: 280px;
+        }
+        #chain-info h3 { margin-bottom: 8px; font-size: 13px; color: #e94560; }
+        #chain-info p { color: #aaa; line-height: 1.6; margin: 3px 0; }
+        #chain-info .highlight { color: #e94560; font-weight: 600; }
+    </style>
+</head>
+<body>
+    <div id="ui">
+        <div id="info">Waiting for solution...</div>
+    </div>
+    <div id="canvas"></div>
+    <div id="legend"><h3>PIECES</h3><div id="legend-items"></div></div>
+    <div id="chain-info"><h3>CHAIN</h3><div id="chain-text"></div></div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <script>
+    (function () {
+        'use strict';
+
+        // ── Globals ──────────────────────────────────────────────
+        let scene, camera, renderer, controls;
+        let trackGroup;
+        let marbleGeo, marbleMat;
+        let activeMarbles = [];
+        let timeSinceLastSpawn = 5;
+        let totalSpawns = 0;
+        let marblePaths = [];
+        let clock;
+        let currentSeed = null;
+        let hasFramed = false;
+
+        // ── Init ─────────────────────────────────────────────────
+        function init() {
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x0f0f23);
+            scene.fog = new THREE.Fog(0x0f0f23, 30, 60);
+
+            camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 100);
+            camera.position.set(11, 14, 13);
+
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(window.devicePixelRatio);
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+            document.getElementById('canvas').appendChild(renderer.domElement);
+
+            controls = new THREE.OrbitControls(camera, renderer.domElement);
+            controls.target.set(5.5, 3.5, 3);
+            controls.enableDamping = true;
+            controls.dampingFactor = 0.08;
+            controls.minDistance = 5;
+            controls.maxDistance = 40;
+
+            const ambient = new THREE.AmbientLight(0x404060, 0.6);
+            scene.add(ambient);
+
+            const dir = new THREE.DirectionalLight(0xffffff, 0.9);
+            dir.position.set(8, 15, 10);
+            dir.castShadow = true;
+            dir.shadow.mapSize.width = 2048;
+            dir.shadow.mapSize.height = 2048;
+            dir.shadow.camera.near = 0.5;
+            dir.shadow.camera.far = 50;
+            dir.shadow.camera.left = -15;
+            dir.shadow.camera.right = 15;
+            dir.shadow.camera.top = 15;
+            dir.shadow.camera.bottom = -15;
+            scene.add(dir);
+
+            const fill = new THREE.DirectionalLight(0x4488ff, 0.3);
+            fill.position.set(-5, 8, -5);
+            scene.add(fill);
+
+            createBase();
+
+            trackGroup = new THREE.Group();
+            scene.add(trackGroup);
+
+            marbleGeo = new THREE.SphereGeometry(0.18, 16, 16);
+            marbleMat = new THREE.MeshStandardMaterial({
+                color: 0xff6644, emissive: 0xff2200, emissiveIntensity: 0.5,
+                metalness: 0.8, roughness: 0.2
+            });
+
+            clock = new THREE.Clock();
+
+            window.addEventListener('resize', onResize);
+            animate();
+
+            setupMessageApi();
+            checkUrlParams();
+            const isEmbedded = (window.self !== window.top) || !!window.ViewerBridge;
+            if (isEmbedded) {
+                document.getElementById('ui').style.display = 'none';
+            }
+
+            postMessage({ type: 'ready' });
+        }
+
+        function createBase() {
+            const baseGeo = new THREE.BoxGeometry(10, 0.3, 5);
+            const baseMat = new THREE.MeshStandardMaterial({ color: 0x2a2a3e, roughness: 0.8 });
+            const base = new THREE.Mesh(baseGeo, baseMat);
+            base.position.set(5, -0.15, 2.5);
+            base.receiveShadow = true;
+            scene.add(base);
+
+            const points = [];
+            for (let z = 0; z <= 5; z++) {
+                points.push(new THREE.Vector3(0, 0.01, z), new THREE.Vector3(10, 0.01, z));
+            }
+            for (let x = 0; x <= 10; x++) {
+                points.push(new THREE.Vector3(x, 0.01, 0), new THREE.Vector3(x, 0.01, 5));
+            }
+            const gridGeo = new THREE.BufferGeometry().setFromPoints(points);
+            const gridMat = new THREE.LineBasicMaterial({ color: 0x444466 });
+            const grid = new THREE.LineSegments(gridGeo, gridMat);
+            scene.add(grid);
+
+            const divPoints = [
+                new THREE.Vector3(5, 0.02, 0), new THREE.Vector3(5, 0.02, 5)
+            ];
+            const divGeo = new THREE.BufferGeometry().setFromPoints(divPoints);
+            const divMat = new THREE.LineBasicMaterial({ color: 0x666688 });
+            scene.add(new THREE.LineSegments(divGeo, divMat));
+        }
+
+        function to3(x, y, z) {
+            return new THREE.Vector3(x + 0.5, z, y + 0.5);
+        }
+
+        function pieceColor(pieceId) {
+            const colors = {
+                1: '#2ecc71',  // Green
+                2: '#3498db',  // Blue
+                3: '#e74c3c',  // Red
+                4: '#f1c40f',  // Yellow
+                5: '#f1c40f',  // Yellow
+                6: '#e67e22',  // Orange
+                7: '#9b59b6',  // Purple
+                8: '#e74c3c',  // Red
+                9: '#3498db',  // Blue
+                10: '#3498db', // Blue
+                11: '#2ecc71', // Green
+                12: '#e74c3c', // Red
+                13: '#2ecc71', // Green
+                14: '#9b59b6', // Purple
+                15: '#e67e22', // Orange
+                16: '#3498db', // Blue
+                17: '#e67e22', // Orange
+                18: '#9b59b6', // Purple
+                19: '#7f8c8d'  // Silver/Gray (Catcher)
+            };
+            const hex = colors[pieceId] || '#ffffff';
+            return new THREE.Color(hex);
+        }
+
+        function clearTrack() {
+            while (trackGroup.children.length > 0) {
+                const obj = trackGroup.children[0];
+                if (obj.geometry) obj.geometry.dispose();
+                if (obj.material) {
+                    if (Array.isArray(obj.material)) obj.material.forEach(m => m.dispose());
+                    else obj.material.dispose();
+                }
+                trackGroup.remove(obj);
+            }
+            marblePaths = [];
+            activeMarbles.forEach(m => {
+                scene.remove(m.mesh);
+            });
+            activeMarbles = [];
+            timeSinceLastSpawn = 5; // Spawn instantly on next animate frame
+            totalSpawns = 0;
+        }
+
+        // ── Render solution ──────────────────────────────────────
+        function renderTrack(solution, seed) {
+            clearTrack();
+            currentSeed = seed ?? currentSeed;
+
+            const pieces = solution.pieces;
+            const total = pieces.length;
+
+            const riserGeo = new THREE.BoxGeometry(0.80, 0.95, 0.80);
+            const riserMat = new THREE.MeshStandardMaterial({
+                color: 0xffffff,
+                roughness: 0.05,
+                metalness: 0.1,
+                transparent: true,
+                opacity: 0.35,
+                emissive: 0x88c0ff,
+                emissiveIntensity: 0.25,
+                depthWrite: false
+            });
+            const supportMaxZ = {};
+            pieces.forEach(p => {
+                [p.start, p.end].forEach(pt => {
+                    const key = `${pt[0]},${pt[1]}`;
+                    supportMaxZ[key] = Math.max(supportMaxZ[key] || 0, pt[2]);
+                });
+            });
+            const riserYOffset = 0.5;
+            for (const [key, maxZ] of Object.entries(supportMaxZ)) {
+                const [tx, ty] = key.split(',').map(Number);
+                for (let z = 0; z < maxZ; z++) {
+                    const riser = new THREE.Mesh(riserGeo, riserMat);
+                    const pos = to3(tx, ty, z);
+                    pos.y += riserYOffset;
+                    riser.position.copy(pos);
+                    riser.castShadow = true;
+                    riser.receiveShadow = true;
+                    trackGroup.add(riser);
+                }
+            }
+
+            const cellGeo = new THREE.BoxGeometry(0.92, 0.1, 0.92);
+            const plateYOffset = 0.025;
+
+            pieces.forEach((p, idx) => {
+                const color = pieceColor(p.piece_id);
+                const mat = new THREE.MeshStandardMaterial({
+                    color, roughness: 0.35, metalness: 0.15
+                });
+
+                const edgeGeo = new THREE.EdgesGeometry(cellGeo);
+                const edgeMat = new THREE.LineBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.15 });
+
+                const isSplitter = p.is_splitter;
+                const isSlopedDescend = (p.start[2] !== p.end[2]) && (p.piece_id !== 10) && (p.piece_id !== 6);
+
+                // Setup angles for sloped calculation (without yaw rotation to keep grid alignment)
+                let rx = 0;
+                let rz = 0;
+                if (isSlopedDescend) {
+                    const dx = p.end[0] - p.start[0];
+                    const dy = p.end[1] - p.start[1];
+                    const len = Math.sqrt(dx * dx + dy * dy);
+                    const dz = p.end[2] - p.start[2];
+                    
+                    if (len > 0) {
+                        const nx = dx / len;
+                        const ny = dy / len;
+                        const slope = dz / len;
+                        
+                        const sx = nx * slope;
+                        const sy = ny * slope;
+                        
+                        rz = Math.atan(sx);
+                        rx = -Math.atan(sy);
+                    }
+                }
+
+                p.cells.forEach((cell, i) => {
+                    let visualZ = cell[2];
+                    let isIntermediate = false;
+
+                    const isStartCell = (cell[0] === p.start[0] && cell[1] === p.start[1]);
+                    const isEndCell = (cell[0] === p.end[0] && cell[1] === p.end[1]);
+
+                    if (isSplitter) {
+                        // The solver already placed non-start cells at oz - 1 on the grid, so no extra shift is needed.
+                    } else if (isSlopedDescend) {
+                        // Smoothly slope intermediate cells along the travel vector
+                        if (!isStartCell && !isEndCell) {
+                            isIntermediate = true;
+                            
+                            // 2D travel vector from start to end
+                            const dx = p.end[0] - p.start[0];
+                            const dy = p.end[1] - p.start[1];
+                            const lenSq = dx * dx + dy * dy;
+                            
+                            let t = 0;
+                            if (lenSq > 0) {
+                                // Project cell onto start-to-end vector to find progress 't'
+                                const cx = cell[0] - p.start[0];
+                                const cy = cell[1] - p.start[1];
+                                const dot = cx * dx + cy * dy;
+                                t = dot / lenSq;
+                            }
+                            t = Math.max(0, Math.min(1, t)); // Clamp to [0, 1]
+                            
+                            // Interpolate height linearly along the gradient plane
+                            visualZ = p.start[2] + t * (p.end[2] - p.start[2]);
+                        }
+                    }
+
+                    // 1. Render solid cube mesh
+                    const cube = new THREE.Mesh(cellGeo, mat);
+                    const pos = to3(cell[0], cell[1], visualZ);
+                    pos.y += plateYOffset;
+                    cube.position.copy(pos);
+
+                    if (isIntermediate && isSlopedDescend) {
+                        cube.rotation.set(rx, 0, rz, 'YXZ');
+                    }
+
+                    cube.castShadow = true;
+                    cube.receiveShadow = true;
+                    trackGroup.add(cube);
+
+                    // 2. Render edge outlines
+                    const edges = new THREE.LineSegments(edgeGeo, edgeMat);
+                    edges.position.copy(pos);
+
+                    if (isIntermediate && isSlopedDescend) {
+                        edges.rotation.set(rx, 0, rz, 'YXZ');
+                    }
+
+                    trackGroup.add(edges);
+                });
+            });
+
+            const isProgress = solution.tower_count === 0;
+
+            if (!isProgress) {
+                const chains = traceChains(pieces);
+                chains.forEach(chain => {
+                    if (chain.length === 0) return;
+                    const entry = chain[0];
+                    const entryPos = to3(entry.start[0], entry.start[1], entry.start[2]);
+                    entryPos.y += plateYOffset;
+                    addMarker(entryPos.clone().add(new THREE.Vector3(0, 0.5, 0)), 0x44ff44, true);
+
+                    const exits = findExits(chain);
+                    exits.forEach(exitPiece => {
+                        const exitPos = to3(exitPiece.end[0], exitPiece.end[1], exitPiece.end[2]);
+                        exitPos.y += plateYOffset;
+                        addMarker(exitPos.clone().add(new THREE.Vector3(0, -0.5, 0)), 0xff4444, false);
+                    });
+                });
+
+                const allLookup = {};
+                pieces.forEach(p => {
+                    const key = `${p.start[0]},${p.start[1]},${p.start[2]}`;
+                    allLookup[key] = p;
+                });
+                chains.forEach(chain => {
+                    if (chain.length === 0) return;
+                    const splitterIdx = chain.findIndex(p => p.is_splitter);
+                    if (splitterIdx < 0) {
+                        marblePaths.push(buildPathPoints(chain));
+                        return;
+                    }
+                    const splitter = chain[splitterIdx];
+                    const stem = chain.slice(0, splitterIdx + 1);
+                    const stemPts = buildPathPoints(stem);
+                    splitter.outputs.forEach(out => {
+                        const socketKey = `${out[0]},${out[1]},${out[2] - 1}`;
+                        const branch = [];
+                        followChainFromSocket(socketKey, allLookup, new Set(), branch);
+                        if (branch.length > 0) {
+                            marblePaths.push([...stemPts, ...buildPathPoints(branch)]);
+                        }
+                    });
+                });
+                if (marblePaths.length === 0) {
+                    marblePaths = [buildPathPoints(chains.flat())];
+                }
+
+                // Chain info
+                const chainEl = document.getElementById('chain-info');
+                const chainText = document.getElementById('chain-text');
+                const chainStrs = chains.map(c => c.map(p => `P${p.piece_id}`).join(' -> '));
+                chainText.innerHTML = chainStrs.map(s => `<p>${s}</p>`).join('');
+                chainEl.style.display = 'block';
+
+                // Camera: frame the track (only once per solve session)
+                if (total > 0 && !hasFramed) {
+                    hasFramed = true;
+                    const maxZ = Math.max(...pieces.map(p => p.origin[2]));
+                    controls.target.set(5.5, maxZ * 0.45 + 0.5, 3);
+                    camera.position.set(11, maxZ + 6.5, 13);
+                    controls.update();
+                }
+            } else {
+                marblePaths = [];
+                marbleSphere.visible = false;
+                document.getElementById('chain-info').style.display = 'none';
+            }
+
+            const dropMat = new THREE.LineDashedMaterial({
+                color: 0xff8844, dashSize: 0.15, gapSize: 0.1,
+                transparent: true, opacity: 0.6
+            });
+
+            pieces.forEach(p => {
+                const endPos = to3(p.end[0], p.end[1], p.end[2]);
+                endPos.y += plateYOffset;
+                const nextSocket = to3(p.end[0], p.end[1], p.end[2] - 1);
+                nextSocket.y += plateYOffset;
+
+                if (p.is_splitter) {
+                    p.outputs.forEach(out => {
+                        const outPos = to3(out[0], out[1], out[2]);
+                        outPos.y += plateYOffset;
+                        const outSocket = to3(out[0], out[1], out[2] - 1);
+                        outSocket.y += plateYOffset;
+                        const points = [outPos, outSocket];
+                        const geo = new THREE.BufferGeometry().setFromPoints(points);
+                        const line = new THREE.Line(geo, dropMat);
+                        line.computeLineDistances();
+                        trackGroup.add(line);
+                    });
+                } else {
+                    const points = [endPos, nextSocket];
+                    const geo = new THREE.BufferGeometry().setFromPoints(points);
+                    const line = new THREE.Line(geo, dropMat);
+                    line.computeLineDistances();
+                    trackGroup.add(line);
+                }
+            });
+
+            // Update info bar
+            const seedLabel = currentSeed != null ? String(currentSeed) : 'random';
+            let descDebug = '';
+            try {
+                const descList = [];
+                pieces.forEach(p => {
+                    if (p.end && p.start && p.end[2] !== p.start[2]) {
+                        descList.push(`P${p.piece_id}(${p.start[2]}->${p.end[2]})`);
+                    }
+                });
+                if (descList.length > 0) {
+                    descDebug = ` &middot; <span style="color:#ffcc00">Desc: ${descList.join(', ')}</span>`;
+                }
+            } catch (e) {
+                descDebug = ` &middot; <span style="color:#ff4444">DebugError: ${e.message}</span>`;
+            }
+            document.getElementById('info').innerHTML =
+                `<span>${total}</span> pieces &middot; <span>${solution.tower_count}</span> towers &middot; seed <span>${seedLabel}</span>${descDebug}`;
+
+            // Legend
+            const legendEl = document.getElementById('legend');
+            const legendItems = document.getElementById('legend-items');
+            legendItems.innerHTML = '';
+            pieces.forEach(p => {
+                const c = pieceColor(p.piece_id);
+                const hex = '#' + c.getHexString();
+                const item = document.createElement('div');
+                item.className = 'legend-item';
+                const tag = p.is_splitter ? ' [SPLIT]' : (p.end[2] !== p.start[2] ? ' [DESC]' : '');
+                item.innerHTML = `<div class="legend-color" style="background:${hex}"></div><span class="legend-label">P${p.piece_id}${tag} z=${p.origin[2]}</span>`;
+                legendItems.appendChild(item);
+            });
+
+            // Add a special item at the end of the legend for towers
+            const towerItem = document.createElement('div');
+            towerItem.className = 'legend-item';
+            towerItem.style.borderTop = '1px solid #444';
+            towerItem.style.marginTop = '8px';
+            towerItem.style.paddingTop = '8px';
+            towerItem.innerHTML = `<div class="legend-color" style="background:#88c0ff; border-radius: 0;"></div><span class="legend-label" style="font-weight: bold; color: #88c0ff;">Tower Pillars: ${solution.tower_count}</span>`;
+            legendItems.appendChild(towerItem);
+
+            legendEl.style.display = 'block';
+
+            postMessage({ type: 'rendered', pieceCount: total, towerCount: solution.tower_count });
+        }
+
+        function addMarker(position, color, up) {
+            const geo = new THREE.ConeGeometry(0.22, 0.55, 8);
+            const mat = new THREE.MeshStandardMaterial({
+                color, emissive: color, emissiveIntensity: 0.4
+            });
+            const cone = new THREE.Mesh(geo, mat);
+            cone.position.copy(position);
+            if (!up) cone.rotation.x = Math.PI;
+            cone.castShadow = true;
+            trackGroup.add(cone);
+        }
+
+        function traceChains(pieces) {
+            const lookup = {};
+            pieces.forEach(p => {
+                const key = `${p.start[0]},${p.start[1]},${p.start[2]}`;
+                lookup[key] = p;
+            });
+
+            const nextSockets = new Set();
+            pieces.forEach(p => {
+                nextSockets.add(`${p.end[0]},${p.end[1]},${p.end[2] - 1}`);
+                if (p.is_splitter) {
+                    p.outputs.forEach(o => nextSockets.add(`${o[0]},${o[1]},${o[2] - 1}`));
+                }
+            });
+
+            const entries = pieces.filter(p => !nextSockets.has(`${p.start[0]},${p.start[1]},${p.start[2]}`));
+            const chains = [];
+
+            entries.forEach(entry => {
+                const chain = [];
+                followChain(entry, lookup, new Set(), chain);
+                chains.push(chain);
+            });
+
+            return chains;
+        }
+
+        // ── Highlight Piece ───────────────────────────────────────────
+        function highlightPiece(pieceId) {
+            trackGroup.children.forEach(child => {
+                if (child.userData && child.userData.pieceId === pieceId) {
+                    if (child.material) {
+                        child.material.emissive = new THREE.Color(0xffffff);
+                        child.material.emissiveIntensity = 0.3;
+                    }
+                }
+            });
+        }
+
+        function followChain(piece, lookup, visited, chain) {
+            if (visited.has(piece.piece_id)) return;
+            visited.add(piece.piece_id);
+            chain.push(piece);
+
+            if (piece.is_splitter) {
+                return;
+            }
+
+            const key = `${piece.end[0]},${piece.end[1]},${piece.end[2] - 1}`;
+            const next = lookup[key];
+            if (next && !visited.has(next.piece_id)) {
+                followChain(next, lookup, visited, chain);
+            }
+        }
+
+        function findExits(chain) {
+            const exits = [];
+            if (chain.length > 0) {
+                exits.push(chain[chain.length - 1]);
+            }
+            return exits;
+        }
+
+        function buildPathPoints(pieceChain) {
+            const pts = [];
+            pieceChain.forEach(p => {
+                const curveIds = [2, 5, 8, 9, 12, 14, 15, 17, 18];
+                const isCurve = curveIds.includes(p.piece_id);
+
+                if (isCurve && p.cells && p.cells.length > 0) {
+                    const startIndex = p.cells.findIndex(c => c[0] === p.start[0] && c[1] === p.start[1]);
+                    const endIndex = p.cells.findIndex(c => c[0] === p.end[0] && c[1] === p.end[1]);
+
+                    if (startIndex !== -1 && endIndex !== -1) {
+                        const startIdx = Math.min(startIndex, endIndex);
+                        const endIdx = Math.max(startIndex, endIndex);
+                        let subCells = p.cells.slice(startIdx, endIdx + 1);
+                        if (startIndex > endIndex) {
+                            subCells = subCells.reverse();
+                        }
+
+                        subCells.forEach(cell => {
+                            let visualZ = cell[2];
+                            const isStartCell = (cell[0] === p.start[0] && cell[1] === p.start[1]);
+                            const isEndCell = (cell[0] === p.end[0] && cell[1] === p.end[1]);
+
+                            if (p.start[2] !== p.end[2] && !isStartCell && !isEndCell) {
+                                const dx = p.end[0] - p.start[0];
+                                const dy = p.end[1] - p.start[1];
+                                const lenSq = dx * dx + dy * dy;
+                                let t = 0;
+                                if (lenSq > 0) {
+                                    const cx = cell[0] - p.start[0];
+                                    const cy = cell[1] - p.start[1];
+                                    const dot = cx * dx + cy * dy;
+                                    t = dot / lenSq;
+                                }
+                                t = Math.max(0, Math.min(1, t));
+                                visualZ = p.start[2] + t * (p.end[2] - p.start[2]);
+                            }
+
+                            const pt = to3(cell[0], cell[1], visualZ);
+                            pt.y += 0.025;
+                            pts.push(pt);
+                        });
+                        return;
+                    }
+                }
+
+                // Default straight line path
+                const s = to3(p.start[0], p.start[1], p.start[2]);
+                let ez = p.end[2];
+                if (p.piece_id === 6) {
+                    ez -= 1; // Splitter exits at oz - 1
+                }
+                const e = to3(p.end[0], p.end[1], ez);
+                s.y += 0.025;
+                e.y += 0.025;
+                pts.push(s, e);
+            });
+            return pts;
+        }
+
+        function followChainFromSocket(socketKey, lookup, visited, chain) {
+            const next = lookup[socketKey];
+            if (!next || visited.has(next.piece_id)) return;
+            visited.add(next.piece_id);
+            chain.push(next);
+            if (next.is_splitter) return;
+            const nextKey = `${next.end[0]},${next.end[1]},${next.end[2] - 1}`;
+            followChainFromSocket(nextKey, lookup, visited, chain);
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            const delta = clock.getDelta();
+
+            controls.update();
+
+            if (marblePaths.length > 0 && marblePaths[0].length >= 2) {
+                // Update and spawn marbles
+                timeSinceLastSpawn += delta;
+                if (timeSinceLastSpawn >= 5) {
+                    timeSinceLastSpawn = 0;
+                    
+                    // Spawn new marble
+                    const mesh = new THREE.Mesh(marbleGeo, marbleMat);
+                    mesh.castShadow = true;
+                    scene.add(mesh);
+                    
+                    activeMarbles.push({
+                        mesh: mesh,
+                        distance: 0,
+                        pathIdx: totalSpawns % marblePaths.length
+                    });
+                    totalSpawns++;
+                }
+
+                // Update active marbles
+                const physicalSpeed = 2.25; // Constant speed in grid units per second (balanced and beautiful!)
+                const nextMarbles = [];
+                
+                for (const marble of activeMarbles) {
+                    const currentPath = marblePaths[marble.pathIdx % marblePaths.length];
+                    
+                    marble.distance = (marble.distance || 0) + delta * physicalSpeed;
+                    
+                    let distanceLeft = marble.distance;
+                    let from = null;
+                    let to = null;
+                    let fraction = 0;
+                    
+                    for (let i = 0; i < currentPath.length - 1; i++) {
+                        const p1 = currentPath[i];
+                        const p2 = currentPath[i + 1];
+                        const segmentLen = p1.distanceTo(p2);
+                        
+                        if (distanceLeft <= segmentLen) {
+                            from = p1;
+                            to = p2;
+                            fraction = distanceLeft / segmentLen;
+                            break;
+                        }
+                        distanceLeft -= segmentLen;
+                    }
+                    
+                    if (from === null && to === null) {
+                        // Reached the end! Remove from scene
+                        scene.remove(marble.mesh);
+                    } else {
+                        // Update position
+                        marble.mesh.position.lerpVectors(from, to, fraction);
+                        marble.mesh.position.y += 0.22;
+                        nextMarbles.push(marble);
+                    }
+                }
+                activeMarbles = nextMarbles;
+            } else {
+                // Clear any existing marbles if no paths exist
+                activeMarbles.forEach(m => scene.remove(m.mesh));
+                activeMarbles = [];
+            }
+
+            renderer.render(scene, camera);
+        }
+
+        function onResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        // ── postMessage API ──────────────────────────────────────
+        function postMessage(msg) {
+            if (window.ViewerBridge) {
+                try { window.ViewerBridge.postMessage(JSON.stringify(msg)); } catch (e) { /* ignore */ }
+            }
+            if (window.parent && window.parent !== window) {
+                try { window.parent.postMessage(msg, '*'); } catch (e) { /* ignore */ }
+            }
+            if (window.opener) {
+                try { window.opener.postMessage(msg, '*'); } catch (e) { /* ignore */ }
+            }
+        }
+
+        function setupMessageApi() {
+            window.addEventListener('message', (event) => {
+                const data = event.data;
+                if (!data || !data.type) return;
+
+                if (data.type === 'solve') {
+                    // Forward solve request to Flutter
+                    if (window.ViewerBridge) {
+                        window.ViewerBridge.postMessage(JSON.stringify(data));
+                    }
+                } else if (data.type === 'render') {
+                    if (data.solution) {
+                        renderTrack(data.solution, data.seed);
+                    }
+                } else if (data.type === 'clear') {
+                    clearTrack();
+                    document.getElementById('info').innerHTML = 'Waiting for solution...';
+                    document.getElementById('legend').style.display = 'none';
+                    document.getElementById('chain-info').style.display = 'none';
+                } else if (data.type === 'hide-ui') {
+                    document.getElementById('ui').style.display = 'none';
+                    document.getElementById('legend').style.display = 'none';
+                    document.getElementById('chain-info').style.display = 'none';
+                } else if (data.type === 'show-ui') {
+                    document.getElementById('ui').style.display = 'flex';
+                } else if (data.type === 'highlight-piece') {
+                    highlightPiece(data.pieceId);
+                }
+            });
+        }
+
+        // ── URL parameter: ?solution=base64_json ─────────────────
+        function checkUrlParams() {
+            const params = new URLSearchParams(window.location.search);
+            const solutionB64 = params.get('solution');
+            if (solutionB64) {
+                try {
+                    const json = atob(solutionB64);
+                    const solution = JSON.parse(json);
+                    renderTrack(solution, parseInt(params.get('seed')) || null);
+                } catch (e) {
+                    console.error('Failed to parse URL solution:', e);
+                }
+            }
+        }
+
+        // ── Embedded variable: window.SOLUTION ────────────────────
+        function checkEmbeddedSolution() {
+            if (window.SOLUTION) {
+                renderTrack(window.SOLUTION, window.SOLUTION_SEED || null);
+            }
+        }
+
+        // ── Start ────────────────────────────────────────────────
+        init();
+    })();
+    </script>
+</body>
+</html>

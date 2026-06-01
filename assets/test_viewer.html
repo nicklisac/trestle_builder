@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Viewer Test Harness</title>
+    <style>
+        body { font-family: system-ui; background: #1a1a2e; color: #eee; margin: 0; display: flex; flex-direction: column; height: 100vh; }
+        #controls { padding: 12px 20px; background: #16213e; display: flex; gap: 10px; align-items: center; border-bottom: 1px solid #333; }
+        #controls button { padding: 8px 16px; background: #e94560; color: #fff; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; }
+        #controls button:hover { background: #c73650; }
+        #controls button.clear { background: #533483; }
+        #controls input { padding: 8px 12px; background: #0f0f23; color: #eee; border: 1px solid #444; border-radius: 6px; width: 100px; }
+        #status { margin-left: auto; font-size: 13px; color: #888; }
+        #status span { color: #e94560; }
+        #viewer-container { flex: 1; }
+        iframe { width: 100%; height: 100%; border: none; }
+    </style>
+</head>
+<body>
+    <div id="controls">
+        <label style="color:#888;font-size:13px;">Seed</label>
+        <input type="number" id="seed" value="42">
+        <button onclick="loadSolution()">Load from JSON</button>
+        <button class="clear" onclick="clearViewer()">Clear</button>
+        <button onclick="hideUI()">Hide Viewer UI</button>
+        <button onclick="showUI()">Show Viewer UI</button>
+        <div id="status">Ready</div>
+    </div>
+    <div id="viewer-container">
+        <iframe id="viewer" src="viewer.html"></iframe>
+    </div>
+
+    <script>
+        const viewer = document.getElementById('viewer');
+        const status = document.getElementById('status');
+
+        viewer.addEventListener('load', () => {
+            status.innerHTML = 'Viewer loaded';
+        });
+
+        window.addEventListener('message', (event) => {
+            if (event.data && event.data.type === 'ready') {
+                status.innerHTML = '<span>Viewer ready</span>';
+            } else if (event.data && event.data.type === 'rendered') {
+                status.innerHTML = `<span>Rendered ${event.data.pieceCount} pieces</span> &middot; ${event.data.towerCount} towers`;
+            }
+        });
+
+        async function loadSolution() {
+            const seed = document.getElementById('seed').value;
+            status.innerHTML = 'Loading...';
+
+            try {
+                const resp = await fetch(`test_solution.json`);
+                const solution = await resp.json();
+                viewer.contentWindow.postMessage({ type: 'render', solution, seed: parseInt(seed) || null }, '*');
+            } catch (e) {
+                status.innerHTML = `<span style="color:red">Error: ${e.message}</span>`;
+            }
+        }
+
+        function clearViewer() {
+            viewer.contentWindow.postMessage({ type: 'clear' }, '*');
+            status.innerHTML = 'Cleared';
+        }
+
+        function hideUI() {
+            viewer.contentWindow.postMessage({ type: 'hide-ui' }, '*');
+        }
+
+        function showUI() {
+            viewer.contentWindow.postMessage({ type: 'show-ui' }, '*');
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base href="$FLUTTER_BASE_HREF">
+  <meta charset="UTF-8">
+  <meta content="IE=Edge" http-equiv="X-UA-Compatible">
+  <meta name="description" content="Trestle Track Builder - generate marble run designs">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black">
+  <meta name="apple-mobile-web-app-title" content="trestle_builder">
+  <link rel="apple-touch-icon" href="icons/Icon-192.png">
+  <link rel="icon" type="image/png" href="favicon.png"/>
+  <title>Trestle Track Builder</title>
+  <link rel="manifest" href="manifest.json">
+  <style>
+    body { margin: 0; overflow: hidden; background: #0f0f23; }
+    #viewer-iframe {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      border: none;
+      z-index: 1;
+    }
+    #flutter {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 0;
+      pointer-events: none;
+    }
+    canvas { pointer-events: none; }
+    #ui-overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      z-index: 10;
+      padding: 12px 20px;
+      background: linear-gradient(180deg, rgba(15,15,35,0.95) 0%, rgba(15,15,35,0.7) 100%);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      border-bottom: 1px solid rgba(233,69,96,0.3);
+      pointer-events: auto;
+    }
+    #ui-overlay label { font-family: system-ui; font-size: 13px; color: #888; }
+    #ui-overlay input {
+      font-family: system-ui; padding: 7px 12px; border: 1px solid #444;
+      border-radius: 6px; background: #1a1a2e; color: #eee; width: 130px;
+    }
+    #ui-overlay button {
+      font-family: system-ui; padding: 7px 18px; border: none; border-radius: 6px;
+      font-size: 14px; font-weight: 600; cursor: pointer; color: #fff;
+    }
+    #btn-gen { background: #e94560; }
+    #btn-gen:disabled { background: #555; cursor: not-allowed; }
+    #btn-rand { background: #533483; }
+    #btn-rand:disabled { background: #333; cursor: not-allowed; }
+    #loading {
+      font-family: system-ui; display: none; color: #e94560; font-size: 13px;
+      margin-left: 10px; animation: pulse 1s infinite;
+    }
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+
+    #designing-overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(10, 10, 26, 0.15);
+      backdrop-filter: none;
+      -webkit-backdrop-filter: none;
+      z-index: 5;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      pointer-events: none;
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    .designing-content {
+      text-align: center;
+      font-family: system-ui, -apple-system, sans-serif;
+      padding: 30px;
+      border-radius: 16px;
+      background: rgba(26, 26, 46, 0.85);
+      border: 1px solid rgba(233, 69, 96, 0.25);
+      box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+      max-width: 320px;
+    }
+    .designing-spinner {
+      width: 48px;
+      height: 48px;
+      border: 3px solid rgba(233, 69, 96, 0.1);
+      border-radius: 50%;
+      border-top-color: #e94560;
+      margin: 0 auto 16px auto;
+      animation: spin 1s cubic-bezier(0.5, 0.1, 0.4, 0.9) infinite;
+    }
+    .designing-text {
+      color: #e94560;
+      font-size: 20px;
+      font-weight: 800;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      margin-bottom: 6px;
+      text-shadow: 0 0 15px rgba(233, 69, 96, 0.4);
+      animation: designPulse 1.8s infinite ease-in-out;
+    }
+    .designing-subtext {
+      color: #888;
+      font-size: 12px;
+      letter-spacing: 0.5px;
+      line-height: 1.4;
+    }
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+    @keyframes designPulse {
+      0%, 100% { opacity: 0.7; transform: scale(0.98); }
+      50% { opacity: 1; transform: scale(1.02); }
+    }
+
+    #mandatory-card {
+      position: absolute;
+      top: 80px;
+      right: 20px;
+      z-index: 10;
+      background: rgba(15, 15, 35, 0.85);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: 1px solid rgba(233, 69, 96, 0.25);
+      border-radius: 12px;
+      padding: 14px 18px;
+      width: 220px;
+      box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3);
+      font-family: system-ui, -apple-system, sans-serif;
+      display: none;
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    #mandatory-card h3 {
+      margin: 0 0 12px 0;
+      font-size: 13px;
+      color: #e94560;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .mandatory-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .mandatory-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .mandatory-badge {
+      width: 24px;
+      height: 24px;
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      font-size: 11px;
+      color: #fff;
+      text-shadow: 0 1px 2px rgba(0,0,0,0.6);
+      border: 1px solid rgba(255,255,255,0.2);
+      box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+      flex-shrink: 0;
+    }
+    .mandatory-label {
+      font-size: 12px;
+      color: #eee;
+      font-weight: 500;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+  </style>
+</head>
+<body>
+  <div id="flutter"></div>
+  <iframe id="viewer-iframe" src=""></iframe>
+  <div id="designing-overlay">
+    <div class="designing-content">
+      <div class="designing-spinner"></div>
+      <div class="designing-text">Designing Track</div>
+      <div class="designing-subtext">Executing non-blocking combinatorial backtracker...</div>
+    </div>
+  </div>
+  <div id="mandatory-card">
+    <h3>
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="color:#e94560;"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>
+      Mandatory Puzzle
+    </h3>
+    <div class="mandatory-list" id="mandatory-list"></div>
+  </div>
+  <div id="ui-overlay">
+    <label for="seed">Seed</label>
+    <input type="number" id="seed" placeholder="random">
+    <button id="btn-gen">Generate</button>
+    <button id="btn-rand">Random</button>
+    <span id="loading">Solving...</span>
+  </div>
+  <script src="viewer_bridge.js"></script>
+  <script src="flutter_bootstrap.js" async></script>
+  <script>
+    const viewer = document.getElementById('viewer-iframe');
+    viewer.src = 'viewer.html?t=' + new Date().getTime();
+
+    const pieceColors = {
+      1: '#2ecc71',  // Green
+      2: '#3498db',  // Blue
+      3: '#e74c3c',  // Red
+      4: '#f1c40f',  // Yellow
+      5: '#f1c40f',  // Yellow
+      6: '#e67e22',  // Orange
+      7: '#9b59b6',  // Purple
+      8: '#e74c3c',  // Red
+      9: '#3498db',  // Blue
+      10: '#3498db', // Blue
+      11: '#2ecc71', // Green
+      12: '#e74c3c', // Red
+      13: '#2ecc71', // Green
+      14: '#9b59b6', // Purple
+      15: '#e67e22', // Orange
+      16: '#3498db', // Blue
+      17: '#e67e22', // Orange
+      18: '#9b59b6'  // Purple
+    };
+
+    const pieceNames = {
+      1: "Straight (4x1)",
+      2: "Step Corner",
+      3: "Descent Drop",
+      4: "Double Lane",
+      5: "S-Curve Link",
+      6: "Y-Splitter",
+      7: "Drop Funnel",
+      8: "Sharp Turn",
+      9: "Long S-Curve",
+      10: "3D Spiral Hill",
+      11: "Spiral Drop",
+      12: "Loop-back U",
+      13: "Corner U-Turn",
+      14: "Double Step Shift",
+      15: "Medium Curve U",
+      16: "Short Straight (3x2)",
+      17: "L-Turn Curve",
+      18: "S-Bend Short"
+    };
+
+    function showMandatoryPieces(pieces) {
+      const card = document.getElementById('mandatory-card');
+      const list = document.getElementById('mandatory-list');
+      list.innerHTML = '';
+      
+      if (!pieces || pieces.length === 0) {
+        card.style.display = 'none';
+        return;
+      }
+      
+      pieces.forEach(id => {
+        const item = document.createElement('div');
+        item.className = 'mandatory-item';
+        
+        const color = pieceColors[id] || '#ffffff';
+        const name = pieceNames[id] || `Piece ${id}`;
+        
+        item.innerHTML = `
+          <div class="mandatory-badge" style="background-color: ${color}">P${id}</div>
+          <div class="mandatory-label">${name}</div>
+        `;
+        list.appendChild(item);
+      });
+      
+      card.style.display = 'block';
+    }
+
+    // Listen for solve-done from viewer or Flutter
+    window.addEventListener('message', (event) => {
+      const data = event.data;
+      if (!data) return;
+
+      if (data.type === 'solved' || data.type === 'rendered') {
+        solveDone();
+      } else if (data.type === 'mandatory_pieces') {
+        if (data.seed !== null && data.seed !== undefined) {
+          document.getElementById('seed').value = data.seed;
+        }
+        showMandatoryPieces(data.pieces);
+      }
+    });
+
+    function sendSolve(seed) {
+      const btnGen = document.getElementById('btn-gen');
+      const btnRand = document.getElementById('btn-rand');
+      const loading = document.getElementById('loading');
+      btnGen.disabled = true;
+      btnRand.disabled = true;
+      loading.style.display = 'inline';
+      
+      document.getElementById('designing-overlay').style.display = 'flex';
+
+      if (window.onViewerMessage) {
+        window.onViewerMessage({ type: 'solve', seed: seed });
+      } else if (viewer && viewer.contentWindow) {
+        viewer.contentWindow.postMessage({ type: 'solve', seed: seed }, '*');
+      }
+    }
+
+    function solveDone() {
+      document.getElementById('btn-gen').disabled = false;
+      document.getElementById('btn-rand').disabled = false;
+      document.getElementById('loading').style.display = 'none';
+      document.getElementById('designing-overlay').style.display = 'none';
+    }
+
+    document.getElementById('btn-gen').addEventListener('click', () => {
+      const seed = document.getElementById('seed').value;
+      sendSolve(seed !== '' ? parseInt(seed) : null);
+    });
+    document.getElementById('btn-rand').addEventListener('click', () => {
+      const seed = Math.floor(Math.random() * 1000000);
+      document.getElementById('seed').value = seed;
+      sendSolve(seed);
+    });
+    document.getElementById('seed').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        document.getElementById('btn-gen').click();
+      }
+    });
+  </script>
+  <script>
+    // Bridge: Flutter -> Viewer
+    window.flutterToViewer = function(msg) {
+      const iframe = document.getElementById('viewer-iframe');
+      if (iframe) {
+        iframe.contentWindow.postMessage(msg, '*');
+      }
+    };
+
+    // Bridge: Viewer -> Flutter (listen for viewer messages)
+    window.addEventListener('message', (event) => {
+      if (event.source && event.data && event.data.type) {
+        // Forward viewer messages to Flutter via a global handler
+        if (window.onViewerMessage) {
+          window.onViewerMessage(event.data);
+        }
+      }
+    });
+  </script>
+</body>
+</html>

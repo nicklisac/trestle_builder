@@ -1,4 +1,23 @@
+# Python files (legacy)
 __pycache__/
 *.pyc
 *.json
 track_seed_*.json
+
+# Flutter and Dart files
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+.metadata
+build/
+
+# IDE files
+.idea/
+.vscode/
+*.iml
+
+# Logs and Lockfiles
+*.log
+flutter_*.log
+pubspec.lock
