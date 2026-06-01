@@ -1,0 +1,25 @@
+Our goal for this project is to build a web application where a user can select which Tressel Tracks sets they own and then some other paramaters and they can request a new working Tressel Track design given their constraints.
+
+Tressel Tracks are a marble run type of toy where most tracks have zero descent, but rather use a widening gap in the tracks to lower the ball and it moves along them, alling it to roll 'down hill' while the plane remains flat.
+
+Tressel tracks can be tought of as taking up space on a grid with a start and an end.
+
+Some tressel tracks also have shape in the Z direction, moving the ball downhill. Aside from those, all tressel tracks are flippable. 
+
+Tressel tracks are supported by tower pieces at their starts and their ends. They also have spaces in the middle which take up space. This means that a tressel track above another cannot have its tower/base intersect the middle of another track. It needs to either have a clear shot to the base grid or the tower needs to sit in line with the below piece's starting or ending tower.
+
+The base grids are a 5x5 grid in which the final 'catcher' pieces and be put and all tower bases must start.
+
+I have attached an image of my current inventory. It constains the diagrams of all present tressel tracks track pieces in my inventory. On each diagram it has a number at the top to act as the track id. It has an X for the start and an O for the end. It also has a 0 next to every start and then either a 0 next to the end or a -1 next to the end. This signifies whether or not the piece is one that descends a level, or if the start and end are on the same plane.
+
+We need to devise an algorithm to build tressel track levels, utilizing much of the inventory as possible, while making sure the track will actually work and stay within the bounds of the pieces I own.
+
+We will then want to design the UI to show the 3d or 2d rendering of the track and finally, generate instructions for the user to help guide them through the building process.
+
+I think the first thing to do is to design the database and the maths to apply the piece shapes in 3 dimensions to build the tracks. Luckily, the tracks are build with quantized levels - each level is the same height - and so we can think of building and validating the track one level at a time.
+
+But I want to be able to do complicated things, such as handling a 'splitter' piece. The hard part about this is this: the marble run goes from the TOP to the BOTTOM of the track, while the track itself needs to be built from the BOTTOM to the TOP, which makes it very difficult to build something that actually works without a design.
+
+I think we may need to do some deep thinking and research on what type of approach will likely work best when it comes to designing how we explore the decision space of what tracks could be built. There are many constraints - which is good for compuation, but bad for finding working paths.
+
+FIRST THING YOU NEED TO DO: Look at my image and describe back to be all of the paths you see so that I can know youa and I are on the same page when it comes to how we are interpreting the track structure. the blocking of the grids matters. Each grid space is one that can be intersected by a tower in the Z plane. Only in open space or connecting through a start/end.
