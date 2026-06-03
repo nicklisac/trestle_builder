@@ -17,6 +17,7 @@ track_seed_*.json
 .idea/
 .vscode/
 *.iml
+.antigravitycli/
 
 # Logs and Lockfiles
 *.log

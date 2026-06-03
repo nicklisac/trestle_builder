@@ -126,6 +126,23 @@
         let hasFramed = false;
         let currentPieces = [];
         let baseGroup = null;
+        let currentBaseCount = null;
+
+        let saveCameraTimeout = null;
+        function saveCameraState() {
+            if (saveCameraTimeout) clearTimeout(saveCameraTimeout);
+            saveCameraTimeout = setTimeout(() => {
+                try {
+                    const state = {
+                        position: { x: camera.position.x, y: camera.position.y, z: camera.position.z },
+                        target: { x: controls.target.x, y: controls.target.y, z: controls.target.z }
+                    };
+                    localStorage.setItem('trestle_camera_state', JSON.stringify(state));
+                } catch (e) {
+                    // ignore
+                }
+            }, 300);
+        }
 
         // ── Init ─────────────────────────────────────────────────
         function init() {
@@ -134,7 +151,6 @@
             scene.fog = new THREE.Fog(0x0f0f23, 30, 60);
 
             camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 100);
-            camera.position.set(11, 14, 13);
 
             renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
             renderer.setSize(window.innerWidth, window.innerHeight);
@@ -144,11 +160,35 @@
             document.getElementById('canvas').appendChild(renderer.domElement);
 
             controls = new THREE.OrbitControls(camera, renderer.domElement);
-            controls.target.set(5.5, 3.5, 3);
+            
+            // Try to restore camera state
+            let cameraRestored = false;
+            try {
+                const camStateStr = localStorage.getItem('trestle_camera_state');
+                if (camStateStr) {
+                    const state = JSON.parse(camStateStr);
+                    if (state && state.position && state.target) {
+                        camera.position.set(state.position.x, state.position.y, state.position.z);
+                        controls.target.set(state.target.x, state.target.y, state.target.z);
+                        cameraRestored = true;
+                    }
+                }
+            } catch (e) {
+                // ignore
+            }
+
+            if (!cameraRestored) {
+                // Point higher and further back: base at the bottom of the viewport
+                camera.position.set(20, 16, 25);
+                controls.target.set(5, 2.5, 2.5);
+            }
+
             controls.enableDamping = true;
             controls.dampingFactor = 0.08;
             controls.minDistance = 5;
             controls.maxDistance = 40;
+            
+            controls.addEventListener('change', saveCameraState);
 
             const ambient = new THREE.AmbientLight(0x404060, 0.6);
             scene.add(ambient);
@@ -197,6 +237,8 @@
 
             setupMessageApi();
             checkUrlParams();
+            checkEmbeddedSolution();
+            checkCachedSolution();
             const isEmbedded = (window.self !== window.top) || !!window.ViewerBridge;
             if (isEmbedded) {
                 document.getElementById('ui').style.display = 'none';
@@ -241,6 +283,8 @@
         }
 
         function createBase(baseCount = 2) {
+            if (currentBaseCount === baseCount && baseGroup) return;
+            currentBaseCount = baseCount;
             if (baseGroup) {
                 scene.remove(baseGroup);
                 baseGroup.traverse(child => {
@@ -526,7 +570,8 @@
                 chainText.innerHTML = chainStrs.map(s => `<p>${s}</p>`).join('');
                 chainEl.style.display = 'block';
 
-                // Camera: frame the track (only once per solve session)
+                // Camera auto-snapping disabled per request to maintain user camera angles
+                /*
                 if (total > 0 && !hasFramed) {
                     hasFramed = true;
                     const maxZ = Math.max(...pieces.map(p => p.origin[2]));
@@ -548,6 +593,7 @@
                     camera.position.set(cx + 6, maxZ + 6.5, cy + 9.5);
                     controls.update();
                 }
+                */
             } else {
                 marblePaths = [];
                 activeMarbles.forEach(m => scene.remove(m.mesh));
@@ -1100,31 +1146,33 @@
                     document.getElementById('chain-info').style.display = 'none';
                 } else if (data.type === 'update-bases') {
                     const baseCount = data.baseCount || 2;
-                    createBase(baseCount);
-                    clearTrack();
-                    hasFramed = false;
-                    
-                    // Reframe camera on empty bases
-                    const basePositions = getBasePositions(baseCount);
-                    let minX = Infinity, maxX = -Infinity;
-                    let minY = Infinity, maxY = -Infinity;
-                    basePositions.forEach(bp => {
-                        if (bp.x * 5 < minX) minX = bp.x * 5;
-                        if ((bp.x + 1) * 5 > maxX) maxX = (bp.x + 1) * 5;
-                        if (bp.y * 5 < minY) minY = bp.y * 5;
-                        if ((bp.y + 1) * 5 > maxY) maxY = (bp.y + 1) * 5;
-                    });
-                    const cx = (minX + maxX) / 2;
-                    const cy = (minY + maxY) / 2;
-                    controls.target.set(cx, 0.5, cy);
-                    camera.position.set(cx + 6, 6.5, cy + 9.5);
-                    controls.update();
+                    if (currentBaseCount !== baseCount) {
+                        createBase(baseCount);
+                        clearTrack();
+                        hasFramed = false;
+                        
+                        // Reframe camera on empty bases
+                        const basePositions = getBasePositions(baseCount);
+                        let minX = Infinity, maxX = -Infinity;
+                        let minY = Infinity, maxY = -Infinity;
+                        basePositions.forEach(bp => {
+                            if (bp.x * 5 < minX) minX = bp.x * 5;
+                            if ((bp.x + 1) * 5 > maxX) maxX = (bp.x + 1) * 5;
+                            if (bp.y * 5 < minY) minY = bp.y * 5;
+                            if ((bp.y + 1) * 5 > maxY) maxY = (bp.y + 1) * 5;
+                        });
+                        const cx = (minX + maxX) / 2;
+                        const cy = (minY + maxY) / 2;
+                        controls.target.set(cx, 2.5, cy);
+                        camera.position.set(cx + 15, 16, cy + 22);
+                        controls.update();
 
-                    document.getElementById('info').innerHTML = 'Configured with ' + baseCount + ' base(s). Click Generate!';
-                    document.getElementById('legend').style.display = 'none';
-                    document.getElementById('legend').classList.remove('collapsed');
-                    document.getElementById('legend-toggle').classList.remove('rotated');
-                    document.getElementById('chain-info').style.display = 'none';
+                        document.getElementById('info').innerHTML = 'Configured with ' + baseCount + ' base(s). Click Generate!';
+                        document.getElementById('legend').style.display = 'none';
+                        document.getElementById('legend').classList.remove('collapsed');
+                        document.getElementById('legend-toggle').classList.remove('rotated');
+                        document.getElementById('chain-info').style.display = 'none';
+                    }
                 } else if (data.type === 'hide-ui') {
                     document.getElementById('ui').style.display = 'none';
                     document.getElementById('legend').style.display = 'none';
@@ -1158,6 +1206,21 @@
         function checkEmbeddedSolution() {
             if (window.SOLUTION) {
                 renderTrack(window.SOLUTION, window.SOLUTION_SEED || null);
+            }
+        }
+
+        // ── LocalStorage cached solution ──────────────────────────
+        function checkCachedSolution() {
+            try {
+                const cachedStr = localStorage.getItem('trestle_last_solution');
+                if (cachedStr) {
+                    const sol = JSON.parse(cachedStr);
+                    if (sol) {
+                        renderTrack(sol, sol.seed);
+                    }
+                }
+            } catch (e) {
+                // ignore
             }
         }
 

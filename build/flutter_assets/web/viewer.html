@@ -134,7 +134,7 @@
             scene.fog = new THREE.Fog(0x0f0f23, 30, 60);
 
             camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 100);
-            camera.position.set(11, 14, 13);
+            camera.position.set(15, 11, 17.5);
 
             renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
             renderer.setSize(window.innerWidth, window.innerHeight);
@@ -144,7 +144,7 @@
             document.getElementById('canvas').appendChild(renderer.domElement);
 
             controls = new THREE.OrbitControls(camera, renderer.domElement);
-            controls.target.set(5.5, 3.5, 3);
+            controls.target.set(5, 0.5, 2.5);
             controls.enableDamping = true;
             controls.dampingFactor = 0.08;
             controls.minDistance = 5;
@@ -526,7 +526,8 @@
                 chainText.innerHTML = chainStrs.map(s => `<p>${s}</p>`).join('');
                 chainEl.style.display = 'block';
 
-                // Camera: frame the track (only once per solve session)
+                // Camera auto-snapping disabled per request to maintain user camera angles
+                /*
                 if (total > 0 && !hasFramed) {
                     hasFramed = true;
                     const maxZ = Math.max(...pieces.map(p => p.origin[2]));
@@ -548,6 +549,7 @@
                     camera.position.set(cx + 6, maxZ + 6.5, cy + 9.5);
                     controls.update();
                 }
+                */
             } else {
                 marblePaths = [];
                 activeMarbles.forEach(m => scene.remove(m.mesh));
@@ -1117,7 +1119,7 @@
                     const cx = (minX + maxX) / 2;
                     const cy = (minY + maxY) / 2;
                     controls.target.set(cx, 0.5, cy);
-                    camera.position.set(cx + 6, 6.5, cy + 9.5);
+                    camera.position.set(cx + 10, 11, cy + 15);
                     controls.update();
 
                     document.getElementById('info').innerHTML = 'Configured with ' + baseCount + ' base(s). Click Generate!';

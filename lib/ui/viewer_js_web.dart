@@ -41,61 +41,69 @@ void showViewerIframe() {
 typedef WebSolveCallback = void Function(int? seed, int deluxe, int builder, int starter);
 typedef WebInstructionsCallback = void Function();
 
-void registerWebSolveCallback(WebSolveCallback callback) {
+typedef WebReadyCallback = void Function();
+
+void registerWebCallbacks({
+  required WebSolveCallback onSolve,
+  required WebReadyCallback onReady,
+}) {
   _window['onViewerMessage'] = ((JSObject data) {
     try {
       final typeAny = data['type'];
-      if (typeAny != null && typeAny is JSString) {
-        final type = typeAny.toDart;
+      if (typeAny != null && typeAny.isA<JSString>()) {
+        final type = (typeAny as JSString).toDart;
         if (type == 'solve') {
           final seedAny = data['seed'];
           int? seed;
           if (seedAny != null) {
-            if (seedAny is JSNumber) {
-              seed = seedAny.toDartInt;
-            } else if (seedAny is JSString) {
-              seed = int.tryParse(seedAny.toDart);
+            if (seedAny.isA<JSNumber>()) {
+              seed = (seedAny as JSNumber).toDartInt;
+            } else if (seedAny.isA<JSString>()) {
+              seed = int.tryParse((seedAny as JSString).toDart);
             }
           }
 
           int deluxe = 1;
           final dAny = data['deluxe'];
           if (dAny != null) {
-            if (dAny is JSNumber) {
-              deluxe = dAny.toDartInt;
-            } else if (dAny is JSString) {
-              deluxe = int.tryParse(dAny.toDart) ?? 1;
+            if (dAny.isA<JSNumber>()) {
+              deluxe = (dAny as JSNumber).toDartInt;
+            } else if (dAny.isA<JSString>()) {
+              deluxe = int.tryParse((dAny as JSString).toDart) ?? 1;
             }
           }
 
           int builder = 0;
           final bAny = data['builder'];
           if (bAny != null) {
-            if (bAny is JSNumber) {
-              builder = bAny.toDartInt;
-            } else if (bAny is JSString) {
-              builder = int.tryParse(bAny.toDart) ?? 0;
+            if (bAny.isA<JSNumber>()) {
+              builder = (bAny as JSNumber).toDartInt;
+            } else if (bAny.isA<JSString>()) {
+              builder = int.tryParse((bAny as JSString).toDart) ?? 0;
             }
           }
 
           int starter = 0;
           final sAny = data['starter'];
           if (sAny != null) {
-            if (sAny is JSNumber) {
-              starter = sAny.toDartInt;
-            } else if (sAny is JSString) {
-              starter = int.tryParse(sAny.toDart) ?? 0;
+            if (sAny.isA<JSNumber>()) {
+              starter = (sAny as JSNumber).toDartInt;
+            } else if (sAny.isA<JSString>()) {
+              starter = int.tryParse((sAny as JSString).toDart) ?? 0;
             }
           }
 
-          callback(seed, deluxe, builder, starter);
+          onSolve(seed, deluxe, builder, starter);
+        } else if (type == 'ready') {
+          onReady();
         }
       }
-    } catch (e) {
-      // ignore
+    } catch (e, stack) {
+      print("Exception in onViewerMessage callback: $e\n$stack");
     }
   }).toJS;
 }
+
 
 void registerWebInstructionsCallback(WebInstructionsCallback callback) {
   _window['onFlutterInstructions'] = (() {
@@ -118,5 +126,82 @@ void savePdfFile(List<int> bytes, String filename) {
   } catch (e) {
     // ignore
   }
+}
+
+void saveLastSeed(int seed) {
+  try {
+    final storage = _window['localStorage'] as JSObject?;
+    if (storage != null) {
+      storage.callMethod('setItem'.toJS, 'trestle_last_seed'.toJS, seed.toString().toJS);
+    }
+  } catch (_) {}
+}
+
+int? getLastSeed() {
+  try {
+    final storage = _window['localStorage'] as JSObject?;
+    if (storage != null) {
+      final val = storage.callMethod('getItem'.toJS, 'trestle_last_seed'.toJS) as JSString?;
+      if (val != null) {
+        return int.tryParse(val.toDart);
+      }
+    }
+  } catch (_) {}
+  return null;
+}
+
+int getSavedDeluxe() {
+  try {
+    final storage = _window['localStorage'] as JSObject?;
+    if (storage != null) {
+      final val = storage.callMethod('getItem'.toJS, 'trestle_deluxe'.toJS) as JSString?;
+      if (val != null) return int.tryParse(val.toDart) ?? 1;
+    }
+  } catch (_) {}
+  return 1;
+}
+
+int getSavedBuilder() {
+  try {
+    final storage = _window['localStorage'] as JSObject?;
+    if (storage != null) {
+      final val = storage.callMethod('getItem'.toJS, 'trestle_builder'.toJS) as JSString?;
+      if (val != null) return int.tryParse(val.toDart) ?? 0;
+    }
+  } catch (_) {}
+  return 0;
+}
+
+int getSavedStarter() {
+  try {
+    final storage = _window['localStorage'] as JSObject?;
+    if (storage != null) {
+      final val = storage.callMethod('getItem'.toJS, 'trestle_starter'.toJS) as JSString?;
+      if (val != null) return int.tryParse(val.toDart) ?? 0;
+    }
+  } catch (_) {}
+  return 0;
+}
+
+void saveLastSolution(String solutionJson) {
+  try {
+    final storage = _window['localStorage'] as JSObject?;
+    if (storage != null) {
+      storage.callMethod('setItem'.toJS, 'trestle_last_solution'.toJS, solutionJson.toJS);
+    }
+  } catch (_) {}
+}
+
+String? getLastSolution() {
+  try {
+    final storage = _window['localStorage'] as JSObject?;
+    if (storage != null) {
+      final val = storage.callMethod('getItem'.toJS, 'trestle_last_solution'.toJS) as JSString?;
+      if (val != null) {
+        return val.toDart;
+      }
+    }
+  } catch (_) {}
+  return null;
 }
 

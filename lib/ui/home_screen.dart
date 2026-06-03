@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import '../models/solution.dart';
@@ -168,6 +169,9 @@ class _HomeScreenState extends State<HomeScreen> {
       _mandatoryPieces = [];
       _showInstructions = false;
     });
+    if (kIsWeb) {
+      sendToViewer({'type': 'instructions_toggled', 'open': false});
+    }
 
     await _viewerController.clear();
 
@@ -186,6 +190,10 @@ class _HomeScreenState extends State<HomeScreen> {
         }
         await _viewerController.render(result, seed: seed);
         if (kIsWeb) {
+          if (result.seed != null) {
+            saveLastSeed(result.seed!);
+          }
+          saveLastSolution(jsonEncode(result.toJson()));
           sendToViewer({'type': 'solved'});
         }
       } else {
@@ -222,15 +230,66 @@ class _HomeScreenState extends State<HomeScreen> {
     if (kIsWeb) {
       registerWebInstructionsCallback(() {
         if (mounted && _solution != null) {
-          setState(() => _showInstructions = true);
+          _setInstructionsOpen(true);
         }
       });
       enableGenerateButton();
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _restoreLastBuild();
+      });
     }
   }
 
   Future<void> _solveWithSeed({int? seed, int deluxe = 1, int builder = 0, int starter = 0}) async {
     await _solve(seed: seed, deluxe: deluxe, builder: builder, starter: starter);
+  }
+
+  void _setInstructionsOpen(bool open) {
+    if (!mounted) return;
+    setState(() {
+      _showInstructions = open;
+    });
+    if (kIsWeb) {
+      sendToViewer({
+        'type': 'instructions_toggled',
+        'open': open,
+      });
+    }
+  }
+
+  void _restoreLastBuild() async {
+    final savedSolJson = getLastSolution();
+    if (savedSolJson != null) {
+      try {
+        final decoded = jsonDecode(savedSolJson);
+        final sol = SolutionData.fromJson(Map<String, dynamic>.from(decoded));
+        setState(() {
+          _solution = sol;
+          _deluxeCount = getSavedDeluxe();
+          _builderCount = getSavedBuilder();
+          _starterCount = getSavedStarter();
+        });
+        await _viewerController.ready;
+        await Future.delayed(const Duration(milliseconds: 100));
+        await _viewerController.render(sol, seed: sol.seed);
+        if (kIsWeb) {
+          sendToViewer({'type': 'solved'});
+        }
+        return;
+      } catch (e) {
+        // Fallback to solving seed if parse fails
+      }
+    }
+
+    final savedSeed = getLastSeed();
+    if (savedSeed != null) {
+      final deluxe = getSavedDeluxe();
+      final builder = getSavedBuilder();
+      final starter = getSavedStarter();
+      await _viewerController.ready;
+      await Future.delayed(const Duration(milliseconds: 100));
+      _solve(seed: savedSeed, deluxe: deluxe, builder: builder, starter: starter);
+    }
   }
 
   void _showInventoryDialog() {
@@ -507,7 +566,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   const SizedBox(width: 8),
                   if (_solution != null)
                     ElevatedButton(
-                      onPressed: () => setState(() => _showInstructions = true),
+                      onPressed: () => _setInstructionsOpen(true),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: const Color(0xFF0f9b0f),
                         foregroundColor: Colors.white,
@@ -551,7 +610,7 @@ class _HomeScreenState extends State<HomeScreen> {
             Positioned.fill(
               child: InstructionsOverlay(
                 solution: _solution!,
-                onClose: () => setState(() => _showInstructions = false),
+                onClose: () => _setInstructionsOpen(false),
               ),
             ),
         ],

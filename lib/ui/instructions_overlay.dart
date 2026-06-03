@@ -1,4 +1,7 @@
 import 'dart:math' as math;
+import 'dart:ui' show PointerDeviceKind;
+import 'package:flutter/gestures.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:pdf/pdf.dart';
@@ -6,6 +9,16 @@ import 'package:pdf/widgets.dart' as pw;
 import '../models/solution.dart';
 import '../solver/models.dart' show getBasePositions;
 import 'viewer_js_stub.dart' if (dart.library.html) 'viewer_js_web.dart';
+
+class _MouseDragScrollBehavior extends MaterialScrollBehavior {
+  @override
+  Set<PointerDeviceKind> get dragDevices => {
+        PointerDeviceKind.touch,
+        PointerDeviceKind.mouse,
+        PointerDeviceKind.trackpad,
+      };
+}
+
 
 // ── Piece metadata ────────────────────────────────────────────────────────────
 
@@ -664,6 +677,7 @@ class InstructionsOverlay extends StatefulWidget {
 class _InstructionsOverlayState extends State<InstructionsOverlay> {
   late final List<_InstructionLevel> _levels;
   late final ScrollController _scrollController;
+  late final ScrollController _jumpBarController;
   final List<GlobalKey> _levelKeys = [];
   int _activeLevel = 0;
 
@@ -676,6 +690,7 @@ class _InstructionsOverlayState extends State<InstructionsOverlay> {
     super.initState();
     _levels = _buildLevels(widget.solution);
     _scrollController = ScrollController()..addListener(_onScroll);
+    _jumpBarController = ScrollController();
     for (var i = 0; i < _levels.length; i++) {
       _levelKeys.add(GlobalKey());
     }
@@ -727,6 +742,7 @@ class _InstructionsOverlayState extends State<InstructionsOverlay> {
   void dispose() {
     if (kIsWeb) showViewerIframe();
     _scrollController.dispose();
+    _jumpBarController.dispose();
     super.dispose();
   }
 
@@ -799,7 +815,7 @@ class _InstructionsOverlayState extends State<InstructionsOverlay> {
 
   Widget _buildHeader() {
     return Container(
-      padding: const EdgeInsets.fromLTRB(20, 72, 16, 18),
+      padding: EdgeInsets.fromLTRB(20, kIsWeb ? 20 : 72, 16, 18),
       decoration: BoxDecoration(
         color: const Color(0xFF0a0a1e),
         border: Border(
@@ -852,47 +868,61 @@ class _InstructionsOverlayState extends State<InstructionsOverlay> {
 
   Widget _buildJumpBar() {
     return Container(
-      height: 44,
+      height: 56,
       color: const Color(0xFF0d0d26),
-      child: ListView.builder(
-        scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        itemCount: _levels.length,
-        itemBuilder: (context, i) {
-          final level = _levels[i];
-          final isActive = i == _activeLevel;
-          return GestureDetector(
-            onTap: () => _jumpTo(i),
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 200),
-              margin: const EdgeInsets.only(right: 6),
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-              decoration: BoxDecoration(
-                color: isActive
-                    ? const Color(0xFFe94560)
-                    : Colors.white.withOpacity(0.06),
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(
-                  color: isActive
-                      ? const Color(0xFFe94560)
-                      : Colors.white.withOpacity(0.12),
-                ),
-              ),
-              child: Text(
-                level.z == 0 ? 'Base' : 'L${level.z}',
-                style: TextStyle(
-                  color: isActive ? Colors.white : const Color(0xFF888888),
-                  fontSize: 11,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: 0.5,
-                ),
-              ),
+      child: Padding(
+        padding: const EdgeInsets.only(bottom: 6),
+        child: ScrollConfiguration(
+          behavior: _MouseDragScrollBehavior(),
+          child: Scrollbar(
+            controller: _jumpBarController,
+            thumbVisibility: true,
+            child: ListView.builder(
+              controller: _jumpBarController,
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+              itemCount: _levels.length,
+              itemBuilder: (context, i) {
+                final level = _levels[i];
+                final isActive = i == _activeLevel;
+                return Center(
+                  child: GestureDetector(
+                    onTap: () => _jumpTo(i),
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 200),
+                      margin: const EdgeInsets.only(right: 6),
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: isActive
+                            ? const Color(0xFFe94560)
+                            : Colors.white.withOpacity(0.06),
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(
+                          color: isActive
+                              ? const Color(0xFFe94560)
+                              : Colors.white.withOpacity(0.12),
+                        ),
+                      ),
+                      child: Text(
+                        level.z == 0 ? 'Base' : 'L${level.z}',
+                        style: TextStyle(
+                          color: isActive ? Colors.white : const Color(0xFF888888),
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: 0.5,
+                        ),
+                      ),
+                    ),
+                  ),
+                );
+              },
             ),
-          );
-        },
+          ),
+        ),
       ),
     );
   }
+
 
   Widget _buildLevelCard(int index) {
     final level = _levels[index];
@@ -960,22 +990,24 @@ class _InstructionsOverlayState extends State<InstructionsOverlay> {
           ),
 
           // Diagram
-          Container(
-            color: const Color(0xFFF7F5F0),
-            padding: const EdgeInsets.all(12),
-            child: AspectRatio(
-              aspectRatio: (_baseMaxX - _baseMinX + 1) / (_baseMaxY - _baseMinY + 1),
-              child: CustomPaint(
-                painter: _DiagramPainter(
-                  level: level,
-                  gridMinX: _gridMinX,
-                  gridMaxX: _gridMaxX,
-                  gridMinY: _gridMinY,
-                  gridMaxY: _gridMaxY,
-                  baseMinX: _baseMinX,
-                  baseMaxX: _baseMaxX,
-                  baseMinY: _baseMinY,
-                  baseMaxY: _baseMaxY,
+          _ZoomableDiagram(
+            child: Container(
+              color: const Color(0xFFF7F5F0),
+              padding: const EdgeInsets.all(12),
+              child: AspectRatio(
+                aspectRatio: (_baseMaxX - _baseMinX + 1) / (_baseMaxY - _baseMinY + 1),
+                child: CustomPaint(
+                  painter: _DiagramPainter(
+                    level: level,
+                    gridMinX: _gridMinX,
+                    gridMaxX: _gridMaxX,
+                    gridMinY: _gridMinY,
+                    gridMaxY: _gridMaxY,
+                    baseMinX: _baseMinX,
+                    baseMaxX: _baseMaxX,
+                    baseMinY: _baseMinY,
+                    baseMaxY: _baseMaxY,
+                  ),
                 ),
               ),
             ),
@@ -1845,6 +1877,55 @@ class _HeaderButtonState extends State<_HeaderButton> {
           ),
         ),
       ),
+    );
+  }
+}
+
+class _ZoomableDiagram extends StatefulWidget {
+  final Widget child;
+  const _ZoomableDiagram({required this.child});
+
+  @override
+  State<_ZoomableDiagram> createState() => _ZoomableDiagramState();
+}
+
+class _ZoomableDiagramState extends State<_ZoomableDiagram> {
+  final TransformationController _transformationController = TransformationController();
+  bool _isCtrlPressed = false;
+
+  @override
+  void initState() {
+    super.initState();
+    HardwareKeyboard.instance.addHandler(_keyHandler);
+  }
+
+  @override
+  void dispose() {
+    HardwareKeyboard.instance.removeHandler(_keyHandler);
+    _transformationController.dispose();
+    super.dispose();
+  }
+
+  bool _keyHandler(KeyEvent event) {
+    final isCtrl = HardwareKeyboard.instance.isControlPressed;
+    if (isCtrl != _isCtrlPressed) {
+      setState(() {
+        _isCtrlPressed = isCtrl;
+      });
+    }
+    return false; // Do not consume the event
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final bool isMobile = defaultTargetPlatform == TargetPlatform.android || defaultTargetPlatform == TargetPlatform.iOS;
+
+    return InteractiveViewer(
+      transformationController: _transformationController,
+      minScale: 1.0,
+      maxScale: 4.0,
+      scaleEnabled: isMobile || _isCtrlPressed,
+      child: widget.child,
     );
   }
 }

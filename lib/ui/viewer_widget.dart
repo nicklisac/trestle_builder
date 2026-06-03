@@ -28,6 +28,7 @@ class TrackViewerController {
   }
 
   Future<void> render(SolutionData solution, {int? seed}) async {
+    await ready;
     if (kIsWeb) {
       _sendToViewer({'type': 'render', 'solution': solution.toJson(), 'seed': seed});
     } else if (_webviewController != null) {
@@ -46,6 +47,7 @@ class TrackViewerController {
   }
 
   Future<void> updateBases(int baseCount) async {
+    await ready;
     if (kIsWeb) {
       _sendToViewer({'type': 'update-bases', 'baseCount': baseCount});
     } else if (_webviewController != null) {
@@ -63,6 +65,7 @@ class TrackViewerController {
   }
 
   Future<void> clear() async {
+    await ready;
     if (kIsWeb) {
       _sendToViewer({'type': 'clear'});
     } else {
@@ -140,10 +143,16 @@ class TrackViewerState extends State<TrackViewer> {
 
       controller._setController(_webviewController!);
     } else {
-      if (!controller._ready.isCompleted) controller._ready.complete();
-      registerWebSolveCallback((seed, deluxe, builder, starter) {
-        controller.onSolve?.call(seed: seed, deluxe: deluxe, builder: builder, starter: starter);
-      });
+      registerWebCallbacks(
+        onSolve: (seed, deluxe, builder, starter) {
+          controller.onSolve?.call(seed: seed, deluxe: deluxe, builder: builder, starter: starter);
+        },
+        onReady: () {
+          if (!controller._ready.isCompleted) {
+            controller._ready.complete();
+          }
+        },
+      );
     }
   }
 
