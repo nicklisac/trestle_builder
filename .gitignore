@@ -2,6 +2,8 @@
 __pycache__/
 *.pyc
 *.json
+!web/**/*.json
+!build/web/**/*.json
 track_seed_*.json
 
 # Flutter and Dart files
