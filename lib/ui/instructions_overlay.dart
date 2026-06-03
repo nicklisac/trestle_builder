@@ -770,6 +770,14 @@ class _InstructionsOverlayState extends State<InstructionsOverlay> {
             constraints: const BoxConstraints(maxWidth: 720),
             child: Column(
               children: [
+                const Offstage(
+                  child: Row(
+                    children: [
+                      Icon(Icons.picture_as_pdf),
+                      Icon(Icons.close),
+                    ],
+                  ),
+                ),
                 _buildHeader(),
                 _buildJumpBar(),
                 Expanded(
@@ -1840,4 +1848,3 @@ class _HeaderButtonState extends State<_HeaderButton> {
     );
   }
 }
-
