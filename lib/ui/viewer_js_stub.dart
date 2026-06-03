@@ -11,3 +11,5 @@ void registerWebInstructionsCallback(WebInstructionsCallback callback) {}
 
 void savePdfFile(List<int> bytes, String filename) {}
 
+void enableGenerateButton() {}
+

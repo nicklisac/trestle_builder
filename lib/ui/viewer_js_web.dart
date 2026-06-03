@@ -105,6 +105,12 @@ void registerWebInstructionsCallback(WebInstructionsCallback callback) {
   }).toJS;
 }
 
+void enableGenerateButton() {
+  try {
+    _window.callMethod('enableGenerateButton'.toJS);
+  } catch (_) {}
+}
+
 void savePdfFile(List<int> bytes, String filename) {
   try {
     final base64Str = base64Encode(bytes);

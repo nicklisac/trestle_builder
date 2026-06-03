@@ -252,6 +252,10 @@ class _DiagramPainter extends CustomPainter {
   final int gridMaxX;
   final int gridMinY;
   final int gridMaxY;
+  final int baseMinX;
+  final int baseMaxX;
+  final int baseMinY;
+  final int baseMaxY;
 
   _DiagramPainter({
     required this.level,
@@ -259,6 +263,10 @@ class _DiagramPainter extends CustomPainter {
     required this.gridMaxX,
     required this.gridMinY,
     required this.gridMaxY,
+    required this.baseMinX,
+    required this.baseMaxX,
+    required this.baseMinY,
+    required this.baseMaxY,
   });
 
 
@@ -434,24 +442,24 @@ class _DiagramPainter extends CustomPainter {
       );
     }
 
-    // ── 1. Grid background ──────────────────────────────────────────────────
+    // ── 1. Grid background (only within base plate area) ────────────────────
     final gridLinePaint = Paint()
       ..color = const Color(0xFFCCCCCC)
       ..strokeWidth = 1.2
       ..strokeCap = StrokeCap.round
       ..style = PaintingStyle.stroke;
 
-    for (int gx = gridMinX; gx <= gridMaxX + 1; gx++) {
+    for (int gx = baseMinX; gx <= baseMaxX + 1; gx++) {
       canvas.drawLine(
-        Offset(cx(gx), cy(gridMinY)),
-        Offset(cx(gx), cy(gridMaxY + 1)),
+        Offset(cx(gx), cy(baseMinY)),
+        Offset(cx(gx), cy(baseMaxY + 1)),
         gridLinePaint,
       );
     }
-    for (int gy = gridMinY; gy <= gridMaxY + 1; gy++) {
+    for (int gy = baseMinY; gy <= baseMaxY + 1; gy++) {
       canvas.drawLine(
-        Offset(cx(gridMinX), cy(gy)),
-        Offset(cx(gridMaxX + 1), cy(gy)),
+        Offset(cx(baseMinX), cy(gy)),
+        Offset(cx(baseMaxX + 1), cy(gy)),
         gridLinePaint,
       );
     }
@@ -627,11 +635,14 @@ class _DiagramPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_DiagramPainter old) =>
-      old.level != level ||
       old.gridMinX != gridMinX ||
       old.gridMaxX != gridMaxX ||
       old.gridMinY != gridMinY ||
-      old.gridMaxY != gridMaxY;
+      old.gridMaxY != gridMaxY ||
+      old.baseMinX != baseMinX ||
+      old.baseMaxX != baseMaxX ||
+      old.baseMinY != baseMinY ||
+      old.baseMaxY != baseMaxY;
 }
 
 // ── Main overlay widget ───────────────────────────────────────────────────────
@@ -658,6 +669,7 @@ class _InstructionsOverlayState extends State<InstructionsOverlay> {
 
   // Grid bounds across the whole solution
   int _gridMinX = 0, _gridMaxX = 0, _gridMinY = 0, _gridMaxY = 0;
+  int _baseMinX = 0, _baseMaxX = 0, _baseMinY = 0, _baseMaxY = 0;
 
   @override
   void initState() {
@@ -674,16 +686,41 @@ class _InstructionsOverlayState extends State<InstructionsOverlay> {
 
   void _computeGridBounds() {
     final basePositions = getBasePositions(widget.solution.baseCount);
-    int maxCols = 0;
-    int maxRows = 0;
+    int baseMinX = 0, baseMaxX = 0, baseMinY = 0, baseMaxY = 0;
     for (final pos in basePositions) {
-      if (pos.x > maxCols) maxCols = pos.x;
-      if (pos.y > maxRows) maxRows = pos.y;
+      final bx = pos.x * 5;
+      final by = pos.y * 5;
+      final bxEnd = bx + 4;
+      final byEnd = by + 4;
+      if (bx < baseMinX) baseMinX = bx;
+      if (bxEnd > baseMaxX) baseMaxX = bxEnd;
+      if (by < baseMinY) baseMinY = by;
+      if (byEnd > baseMaxY) baseMaxY = byEnd;
     }
-    _gridMinX = 0;
-    _gridMaxX = (maxCols + 1) * 5 - 1;
-    _gridMinY = 0;
-    _gridMaxY = (maxRows + 1) * 5 - 1;
+    _baseMinX = baseMinX;
+    _baseMaxX = baseMaxX;
+    _baseMinY = baseMinY;
+    _baseMaxY = baseMaxY;
+
+    int minGX = baseMinX, maxGX = baseMaxX, minGY = baseMinY, maxGY = baseMaxY;
+    for (final p in widget.solution.pieces) {
+      for (final c in p.cells) {
+        if (c[0] < minGX) minGX = c[0];
+        if (c[0] > maxGX) maxGX = c[0];
+        if (c[1] < minGY) minGY = c[1];
+        if (c[1] > maxGY) maxGY = c[1];
+      }
+      for (final o in p.outputs) {
+        if (o[0] < minGX) minGX = o[0];
+        if (o[0] > maxGX) maxGX = o[0];
+        if (o[1] < minGY) minGY = o[1];
+        if (o[1] > maxGY) maxGY = o[1];
+      }
+    }
+    _gridMinX = minGX;
+    _gridMaxX = maxGX;
+    _gridMinY = minGY;
+    _gridMaxY = maxGY;
   }
 
   @override
@@ -789,43 +826,22 @@ class _InstructionsOverlayState extends State<InstructionsOverlay> {
             ),
           ),
           // Save PDF Button
-          GestureDetector(
-            onTap: _exporting ? null : _exportToPdf,
-            child: Container(
-              width: 36,
-              height: 36,
-              margin: const EdgeInsets.only(right: 10),
-              decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.06),
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: Colors.white.withOpacity(0.12)),
-              ),
-              child: Center(
-                child: _exporting
-                    ? const SizedBox(
-                        width: 16,
-                        height: 16,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: Color(0xFFAAAAAA),
-                        ),
-                      )
-                    : const Icon(Icons.picture_as_pdf, color: Color(0xFFAAAAAA), size: 18),
-              ),
-            ),
+          _HeaderButton(
+            onPressed: _exporting ? null : _exportToPdf,
+            child: _exporting
+                ? const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Color(0xFFAAAAAA),
+                    ),
+                  )
+                : const Icon(Icons.picture_as_pdf, color: Color(0xFFAAAAAA), size: 18),
           ),
-          GestureDetector(
-            onTap: widget.onClose,
-            child: Container(
-              width: 36,
-              height: 36,
-              decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.06),
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: Colors.white.withOpacity(0.12)),
-              ),
-              child: const Icon(Icons.close, color: Color(0xFFAAAAAA), size: 18),
-            ),
+          _HeaderButton(
+            onPressed: widget.onClose,
+            child: const Icon(Icons.close, color: Color(0xFFAAAAAA), size: 18),
           ),
         ],
       ),
@@ -947,7 +963,7 @@ class _InstructionsOverlayState extends State<InstructionsOverlay> {
             color: const Color(0xFFF7F5F0),
             padding: const EdgeInsets.all(12),
             child: AspectRatio(
-              aspectRatio: 16 / 10,
+              aspectRatio: (_baseMaxX - _baseMinX + 1) / (_baseMaxY - _baseMinY + 1),
               child: CustomPaint(
                 painter: _DiagramPainter(
                   level: level,
@@ -955,6 +971,10 @@ class _InstructionsOverlayState extends State<InstructionsOverlay> {
                   gridMaxX: _gridMaxX,
                   gridMinY: _gridMinY,
                   gridMaxY: _gridMaxY,
+                  baseMinX: _baseMinX,
+                  baseMaxX: _baseMaxX,
+                  baseMinY: _baseMinY,
+                  baseMaxY: _baseMaxY,
                 ),
               ),
             ),
@@ -1187,16 +1207,16 @@ class _InstructionsOverlayState extends State<InstructionsOverlay> {
                         ),
                         padding: const pw.EdgeInsets.all(16),
                         child: pw.AspectRatio(
-                          aspectRatio: 16 / 10,
+                          aspectRatio: (_gridMaxX - _gridMinX + 1) / (_gridMaxY - _gridMinY + 1),
                           child: pw.Stack(
                             children: [
                               pw.CustomPaint(
-                                size: const PdfPoint(500, 312.5),
+                                size: PdfPoint(500, 500 * (_gridMaxY - _gridMinY + 1) / (_gridMaxX - _gridMinX + 1)),
                                 painter: (PdfGraphics canvas, PdfPoint size) {
                                   _paintPdfDiagram(canvas, size, level);
                                 },
                               ),
-                              ..._buildPdfLabels(level, 500, 312.5),
+                              ..._buildPdfLabels(level, 500, 500 * (_gridMaxY - _gridMinY + 1) / (_gridMaxX - _gridMinX + 1)),
                             ],
                           ),
                         ),
@@ -1451,12 +1471,12 @@ class _InstructionsOverlayState extends State<InstructionsOverlay> {
     canvas.setStrokeColor(PdfColor.fromInt(0xFFCCCCCC));
     canvas.setLineCap(PdfLineCap.round);
 
-    for (int gx = _gridMinX; gx <= _gridMaxX + 1; gx++) {
-      canvas.drawLine(cx(gx), pdfY(cy(_gridMinY)), cx(gx), pdfY(cy(_gridMaxY + 1)));
+    for (int gx = _baseMinX; gx <= _baseMaxX + 1; gx++) {
+      canvas.drawLine(cx(gx), pdfY(cy(_baseMinY)), cx(gx), pdfY(cy(_baseMaxY + 1)));
       canvas.strokePath();
     }
-    for (int gy = _gridMinY; gy <= _gridMaxY + 1; gy++) {
-      canvas.drawLine(cx(_gridMinX), pdfY(cy(gy)), cx(_gridMaxX + 1), pdfY(cy(gy)));
+    for (int gy = _baseMinY; gy <= _baseMaxY + 1; gy++) {
+      canvas.drawLine(cx(_baseMinX), pdfY(cy(gy)), cx(_baseMaxX + 1), pdfY(cy(gy)));
       canvas.strokePath();
     }
 
@@ -1772,5 +1792,52 @@ class _PdfLayoutHelper {
 
   double labelX(int gx) => originX + (gx - gridMinX) * cellSize;
   double labelY(int gy) => originY + (gy - gridMinY) * cellSize;
+}
+
+class _HeaderButton extends StatefulWidget {
+  final VoidCallback? onPressed;
+  final Widget child;
+  const _HeaderButton({required this.onPressed, required this.child});
+
+  @override
+  State<_HeaderButton> createState() => _HeaderButtonState();
+}
+
+class _HeaderButtonState extends State<_HeaderButton> {
+  bool _hover = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return MouseRegion(
+      cursor: widget.onPressed != null ? SystemMouseCursors.click : SystemMouseCursors.basic,
+      onEnter: (_) => setState(() => _hover = true),
+      onExit: (_) => setState(() => _hover = false),
+      child: GestureDetector(
+        onTap: widget.onPressed,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 150),
+          curve: Curves.easeOut,
+          width: 36,
+          height: 36,
+          margin: const EdgeInsets.only(right: 10),
+          decoration: BoxDecoration(
+            color: _hover
+                ? (widget.onPressed != null ? const Color(0xFFe94560).withOpacity(0.2) : Colors.white.withOpacity(0.06))
+                : Colors.white.withOpacity(0.06),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(
+              color: _hover ? const Color(0xFFe94560).withOpacity(0.5) : Colors.white.withOpacity(0.12),
+            ),
+          ),
+          child: Center(
+            child: Transform.scale(
+              scale: _hover && widget.onPressed != null ? 1.1 : 1.0,
+              child: widget.child,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }
 

@@ -225,6 +225,7 @@ class _HomeScreenState extends State<HomeScreen> {
           setState(() => _showInstructions = true);
         }
       });
+      enableGenerateButton();
     }
   }
 
@@ -474,46 +475,8 @@ class _HomeScreenState extends State<HomeScreen> {
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
               child: Row(
                 children: [
-                  const Text(
-                    'Seed',
-                    style: TextStyle(color: Color(0xFF888888), fontSize: 13),
-                  ),
-                  const SizedBox(width: 8),
-                  SizedBox(
-                    width: 100,
-                    child: TextField(
-                      controller: _seedController,
-                      keyboardType: TextInputType.number,
-                      style: const TextStyle(color: Colors.white),
-                      decoration: InputDecoration(
-                        hintText: 'random',
-                        hintStyle: const TextStyle(color: Color(0xFF555555)),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(6),
-                          borderSide: const BorderSide(color: Color(0xFF444444)),
-                        ),
-                        enabledBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(6),
-                          borderSide: const BorderSide(color: Color(0xFF444444)),
-                        ),
-                        focusedBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(6),
-                          borderSide: const BorderSide(color: Color(0xFFe94560)),
-                        ),
-                        filled: true,
-                        fillColor: const Color(0xFF1a1a2e),
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
                   ElevatedButton(
-                    onPressed: _solving ? null : () {
-                      final seed = _seedController.text.isEmpty
-                          ? null
-                          : int.tryParse(_seedController.text);
-                      _solve(seed: seed);
-                    },
+                    onPressed: _solving ? null : _randomSolve,
                     style: ElevatedButton.styleFrom(
                       backgroundColor: const Color(0xFFe94560),
                       foregroundColor: Colors.white,
@@ -529,16 +492,6 @@ class _HomeScreenState extends State<HomeScreen> {
                             ),
                           )
                         : const Text('Generate'),
-                  ),
-                  const SizedBox(width: 8),
-                  ElevatedButton(
-                    onPressed: _solving ? null : _randomSolve,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF533483),
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
-                    ),
-                    child: const Text('Random'),
                   ),
                   const SizedBox(width: 8),
                   ElevatedButton(
