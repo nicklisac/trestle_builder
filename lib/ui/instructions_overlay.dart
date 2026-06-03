@@ -828,20 +828,13 @@ class _InstructionsOverlayState extends State<InstructionsOverlay> {
           // Save PDF Button
           _HeaderButton(
             onPressed: _exporting ? null : _exportToPdf,
-            child: _exporting
-                ? const SizedBox(
-                    width: 16,
-                    height: 16,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      color: Color(0xFFAAAAAA),
-                    ),
-                  )
-                : const Icon(Icons.picture_as_pdf, color: Color(0xFFAAAAAA), size: 18),
+            icon: Icons.picture_as_pdf,
+            loading: _exporting,
           ),
           _HeaderButton(
             onPressed: widget.onClose,
-            child: const Icon(Icons.close, color: Color(0xFFAAAAAA), size: 18),
+            icon: Icons.close,
+            loading: false,
           ),
         ],
       ),
@@ -1280,8 +1273,8 @@ class _InstructionsOverlayState extends State<InstructionsOverlay> {
       }
 
       final bytes = await pdf.save();
-      final seed = widget.solution.seed;
-      savePdfFile(bytes, 'trestle_track_instructions_$seed.pdf');
+       final seed = widget.solution.seed ?? 'random';
+       savePdfFile(bytes, 'trestle_track_instructions_$seed.pdf');
     } catch (e) {
       debugPrint('Error generating PDF: $e');
       ScaffoldMessenger.of(context).showSnackBar(
@@ -1796,8 +1789,9 @@ class _PdfLayoutHelper {
 
 class _HeaderButton extends StatefulWidget {
   final VoidCallback? onPressed;
-  final Widget child;
-  const _HeaderButton({required this.onPressed, required this.child});
+  final IconData icon;
+  final bool loading;
+  const _HeaderButton({required this.onPressed, required this.icon, required this.loading});
 
   @override
   State<_HeaderButton> createState() => _HeaderButtonState();
@@ -1830,10 +1824,16 @@ class _HeaderButtonState extends State<_HeaderButton> {
             ),
           ),
           child: Center(
-            child: Transform.scale(
-              scale: _hover && widget.onPressed != null ? 1.1 : 1.0,
-              child: widget.child,
-            ),
+            child: widget.loading
+                ? const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Color(0xFFAAAAAA),
+                    ),
+                  )
+                : Icon(widget.icon, color: const Color(0xFFAAAAAA), size: 18),
           ),
         ),
       ),

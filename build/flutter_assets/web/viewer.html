@@ -48,10 +48,11 @@
             position: absolute; bottom: 16px; left: 16px; z-index: 10;
             background: rgba(15,15,35,0.9); padding: 14px 16px;
             border-radius: 10px; font-size: 12px;
-            max-height: 55vh; overflow-y: auto;
+            max-height: calc(100vh - 80px - 16px); overflow-y: auto;
             border: 1px solid rgba(233,69,96,0.2);
             display: none;
             width: 230px;
+            pointer-events: auto;
         }
         #legend.collapsed {
             max-height: none;
@@ -63,9 +64,12 @@
         }
         #legend-toggle {
             background: none; border: none; color: #e94560; cursor: pointer;
-            font-size: 16px; padding: 0 4px; line-height: 1; transition: transform 0.2s;
+            font-size: 14px; padding: 4px 8px; line-height: 1; transition: transform 0.2s;
+            border-radius: 4px; min-width: 28px; min-height: 28px;
+            display: flex; align-items: center; justify-content: center;
+            pointer-events: auto; z-index: 11; position: relative;
         }
-        #legend-toggle:hover { color: #fff; }
+        #legend-toggle:hover { color: #fff; background: rgba(255,255,255,0.08); }
         #legend-toggle.rotated { transform: rotate(180deg); }
         #legend-summary { display: none; flex-direction: column; gap: 6px; }
         #legend.collapsed #legend-summary { display: flex; }
@@ -94,7 +98,7 @@
     </div>
     <div id="canvas"></div>
     <div id="legend">
-        <h3>PIECES<button id="legend-toggle">&#9650;</button></h3>
+        <h3>PIECES<button id="legend-toggle">&#9660;</button></h3>
         <div id="legend-summary">
             <span>Track: <strong id="summary-pieces">0</strong> pieces</span>
             <span>Towers: <strong id="summary-towers">0</strong> pillars</span>
@@ -659,6 +663,8 @@
             legendItems.appendChild(towerItem);
 
             legendEl.style.display = 'block';
+            legendEl.classList.add('collapsed');
+            document.getElementById('legend-toggle').classList.add('rotated');
 
             // Populate summary for collapsed state
             document.getElementById('summary-pieces').textContent = total;
