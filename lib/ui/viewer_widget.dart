@@ -6,7 +6,7 @@ import 'package:webview_flutter/webview_flutter.dart';
 import '../models/solution.dart';
 import 'viewer_js_stub.dart' if (dart.library.html) 'viewer_js_web.dart';
 
-typedef SolveCallback = Future<void> Function({int? seed});
+typedef SolveCallback = Future<void> Function({int? seed, int deluxe, int builder, int starter});
 
 class ViewerMessage {
   final String type;
@@ -37,6 +37,23 @@ class TrackViewerController {
             type: 'render',
             solution: ${jsonEncode(solution.toJson())},
             seed: ${seed ?? 'null'}
+          };
+          window.postMessage(msg, '*');
+        })();
+      ''';
+      await _webviewController!.runJavaScript(js);
+    }
+  }
+
+  Future<void> updateBases(int baseCount) async {
+    if (kIsWeb) {
+      _sendToViewer({'type': 'update-bases', 'baseCount': baseCount});
+    } else if (_webviewController != null) {
+      final js = '''
+        (function() {
+          var msg = {
+            type: 'update-bases',
+            baseCount: $baseCount
           };
           window.postMessage(msg, '*');
         })();
@@ -107,7 +124,15 @@ class TrackViewerState extends State<TrackViewer> {
               controller._ready.complete();
             } else if (data['type'] == 'solve') {
               final seed = data['seed'];
-              await controller.onSolve?.call(seed: seed != null ? seed as int : null);
+              final deluxe = data['deluxe'] != null ? data['deluxe'] as int : 1;
+              final builder = data['builder'] != null ? data['builder'] as int : 0;
+              final starter = data['starter'] != null ? data['starter'] as int : 0;
+              await controller.onSolve?.call(
+                seed: seed != null ? seed as int : null,
+                deluxe: deluxe,
+                builder: builder,
+                starter: starter,
+              );
             }
           } catch (_) {}
         })
@@ -116,8 +141,8 @@ class TrackViewerState extends State<TrackViewer> {
       controller._setController(_webviewController!);
     } else {
       if (!controller._ready.isCompleted) controller._ready.complete();
-      registerWebSolveCallback((seed) {
-        controller.onSolve?.call(seed: seed);
+      registerWebSolveCallback((seed, deluxe, builder, starter) {
+        controller.onSolve?.call(seed: seed, deluxe: deluxe, builder: builder, starter: starter);
       });
     }
   }

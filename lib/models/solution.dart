@@ -4,6 +4,7 @@ class SolutionData {
   final int towerCount;
   final Map<String, int> towerMap;
   final List<PieceData> pieces;
+  final int baseCount;
 
   const SolutionData({
     this.seed,
@@ -11,6 +12,7 @@ class SolutionData {
     required this.towerCount,
     required this.towerMap,
     required this.pieces,
+    this.baseCount = 2,
   });
 
   factory SolutionData.fromJson(Map<String, dynamic> json) {
@@ -20,6 +22,7 @@ class SolutionData {
       towerCount: json['tower_count'] as int,
       towerMap: Map<String, int>.from(json['tower_map'] as Map),
       pieces: (json['pieces'] as List).map((p) => PieceData.fromJson(p as Map<String, dynamic>)).toList(),
+      baseCount: json['base_count'] != null ? json['base_count'] as int : 2,
     );
   }
 
@@ -29,6 +32,7 @@ class SolutionData {
       'tower_count': towerCount,
       'tower_map': towerMap,
       'pieces': pieces.map((p) => p.toJson()).toList(),
+      'base_count': baseCount,
     };
   }
 }

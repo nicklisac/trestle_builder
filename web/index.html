@@ -60,6 +60,17 @@
     #btn-gen:disabled { background: #555; cursor: not-allowed; }
     #btn-rand { background: #533483; }
     #btn-rand:disabled { background: #333; cursor: not-allowed; }
+    #btn-config {
+      background: #1a1a2e;
+      border: 1px solid rgba(233,69,96,0.4);
+      color: #eee;
+    }
+    #btn-config:hover {
+      background: rgba(233,69,96,0.15);
+    }
+    .cnt-btn:hover {
+      background: rgba(255,255,255,0.05) !important;
+    }
     #loading {
       font-family: system-ui; display: none; color: #e94560; font-size: 13px;
       margin-left: 10px; animation: pulse 1s infinite;
@@ -390,8 +401,78 @@
     <input type="number" id="seed" placeholder="random">
     <button id="btn-gen" disabled>Generate</button>
     <button id="btn-rand" disabled>Random</button>
+    <button id="btn-config">Track Config</button>
     <button id="btn-instruct" style="display: none;">Instructions</button>
     <span id="loading">Solving...</span>
+  </div>
+
+  <!-- Track Config Modal Overlay -->
+  <div id="config-overlay" style="position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(8, 8, 22, 0.7); backdrop-filter: blur(15px); -webkit-backdrop-filter: blur(15px); z-index: 9999; display: none; align-items: center; justify-content: center;">
+    <div class="config-card" style="width: 90%; max-width: 440px; border-radius: 20px; background: rgba(14, 14, 34, 0.98); border: 1px solid rgba(233, 69, 96, 0.4); box-shadow: 0 24px 80px 0 rgba(0, 0, 0, 0.8); display: flex; flex-direction: column; overflow: hidden; font-family: system-ui, -apple-system, sans-serif; color: #fff;">
+      <div class="config-header" style="padding: 20px 24px; border-bottom: 1px solid rgba(255, 255, 255, 0.08); display: flex; align-items: center; justify-content: space-between; background: rgba(233, 69, 96, 0.06);">
+        <h2 style="margin: 0; font-size: 16px; font-weight: 800; letter-spacing: 2px; text-transform: uppercase;">Track Configuration</h2>
+        <button class="config-close" id="btn-config-close" style="background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); font-size: 18px; color: #aaa; cursor: pointer; border-radius: 8px; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center;">&times;</button>
+      </div>
+      <div class="config-body" style="padding: 24px; display: flex; flex-direction: column; gap: 20px;">
+        <p style="margin: 0; font-size: 13px; color: #888; line-height: 1.4;">Combine multiple sets to dynamically scale your available piece inventory, support towers, and base grid boards.</p>
+        
+        <!-- Deluxe Set row -->
+        <div class="config-row" style="display: flex; align-items: center; justify-content: space-between; padding-bottom: 12px; border-bottom: 1px solid rgba(255,255,255,0.05);">
+          <div>
+            <div style="font-weight: 700; font-size: 14px;">Deluxe Set</div>
+            <div style="font-size: 11px; color: #666; margin-top: 3px;">90 Towers, 2 Bases, 2 Catchers, all 18 pieces</div>
+          </div>
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <button class="cnt-btn" id="dlx-dec" style="width: 32px; height: 32px; border-radius: 50%; border: 1px solid rgba(233,69,96,0.3); background: transparent; color: #e94560; font-size: 16px; cursor: pointer; display: flex; align-items: center; justify-content: center; font-weight: bold;">-</button>
+            <span id="dlx-val" style="width: 30px; text-align: center; font-weight: bold; font-size: 15px;">1</span>
+            <button class="cnt-btn" id="dlx-inc" style="width: 32px; height: 32px; border-radius: 50%; border: 1px solid rgba(15,155,15,0.3); background: transparent; color: #0f9b0f; font-size: 16px; cursor: pointer; display: flex; align-items: center; justify-content: center; font-weight: bold;">+</button>
+          </div>
+        </div>
+
+        <!-- Builder Set row -->
+        <div class="config-row" style="display: flex; align-items: center; justify-content: space-between; padding-bottom: 12px; border-bottom: 1px solid rgba(255,255,255,0.05);">
+          <div>
+            <div style="font-weight: 700; font-size: 14px;">Builder Set</div>
+            <div style="font-size: 11px; color: #666; margin-top: 3px;">45 Towers, 1 Base, 10 selected pieces</div>
+          </div>
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <button class="cnt-btn" id="bld-dec" style="width: 32px; height: 32px; border-radius: 50%; border: 1px solid rgba(233,69,96,0.3); background: transparent; color: #e94560; font-size: 16px; cursor: pointer; display: flex; align-items: center; justify-content: center; font-weight: bold;">-</button>
+            <span id="bld-val" style="width: 30px; text-align: center; font-weight: bold; font-size: 15px;">0</span>
+            <button class="cnt-btn" id="bld-inc" style="width: 32px; height: 32px; border-radius: 50%; border: 1px solid rgba(15,155,15,0.3); background: transparent; color: #0f9b0f; font-size: 16px; cursor: pointer; display: flex; align-items: center; justify-content: center; font-weight: bold;">+</button>
+          </div>
+        </div>
+
+        <!-- Starter Set row -->
+        <div class="config-row" style="display: flex; align-items: center; justify-content: space-between; padding-bottom: 12px; border-bottom: 1px solid rgba(255,255,255,0.05);">
+          <div>
+            <div style="font-weight: 700; font-size: 14px;">Starter Set</div>
+            <div style="font-size: 11px; color: #666; margin-top: 3px;">30 Towers, 1 Base, 6 selected pieces</div>
+          </div>
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <button class="cnt-btn" id="str-dec" style="width: 32px; height: 32px; border-radius: 50%; border: 1px solid rgba(233,69,96,0.3); background: transparent; color: #e94560; font-size: 16px; cursor: pointer; display: flex; align-items: center; justify-content: center; font-weight: bold;">-</button>
+            <span id="str-val" style="width: 30px; text-align: center; font-weight: bold; font-size: 15px;">0</span>
+            <button class="cnt-btn" id="str-inc" style="width: 32px; height: 32px; border-radius: 50%; border: 1px solid rgba(15,155,15,0.3); background: transparent; color: #0f9b0f; font-size: 16px; cursor: pointer; display: flex; align-items: center; justify-content: center; font-weight: bold;">+</button>
+          </div>
+        </div>
+
+        <!-- Totals summary block -->
+        <div class="config-summary" style="background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.06); border-radius: 12px; padding: 16px; display: flex; flex-direction: column; gap: 10px;">
+          <div style="display: flex; justify-content: space-between; font-size: 13px;">
+            <span style="color: #888;">Total Base Grid:</span>
+            <span id="summary-grid" style="font-weight: bold; color: #fff;">10 x 5</span>
+          </div>
+          <div style="display: flex; justify-content: space-between; font-size: 13px;">
+            <span style="color: #888;">Max Support Towers:</span>
+            <span id="summary-towers" style="font-weight: bold; color: #fff;">90</span>
+          </div>
+        </div>
+
+        <div style="display: flex; justify-content: flex-end; gap: 12px; margin-top: 10px;">
+          <button id="btn-config-cancel" style="font-family: system-ui; padding: 8px 16px; border: none; border-radius: 6px; font-size: 13px; font-weight: 600; cursor: pointer; background: transparent; color: #888;">Cancel</button>
+          <button id="btn-config-apply" style="font-family: system-ui; padding: 8px 20px; border: none; border-radius: 6px; font-size: 13px; font-weight: 600; cursor: pointer; background: #e94560; color: #fff;">Apply</button>
+        </div>
+      </div>
+    </div>
   </div>
 
   <div id="instructions-overlay">
@@ -420,7 +501,7 @@
 
     const pieceColors = {
       1: '#2ecc71',  // Green
-      2: '#3498db',  // Blue
+      2: '#f1c40f',  // Yellow
       3: '#e74c3c',  // Red
       4: '#f1c40f',  // Yellow
       5: '#f1c40f',  // Yellow
@@ -496,6 +577,11 @@
       if (data.type === 'ready') {
         document.getElementById('btn-gen').disabled = false;
         document.getElementById('btn-rand').disabled = false;
+        const totalBases = activeDeluxe * 2 + activeBuilder * 1 + activeStarter * 1;
+        const activeBases = totalBases > 0 ? totalBases : 2;
+        if (viewer && viewer.contentWindow) {
+          viewer.contentWindow.postMessage({ type: 'update-bases', baseCount: activeBases }, '*');
+        }
       } else if (data.type === 'solved' || data.type === 'rendered') {
         solveDone();
       } else if (data.type === 'mandatory_pieces') {
@@ -506,6 +592,67 @@
       } else if (data.type === 'instructions_ready') {
         renderInstructionsModal(data.steps);
       }
+    });
+
+    let deluxeCount = 1;
+    let builderCount = 0;
+    let starterCount = 0;
+
+    let activeDeluxe = 1;
+    let activeBuilder = 0;
+    let activeStarter = 0;
+
+    function updateConfigUi() {
+      document.getElementById('dlx-val').textContent = deluxeCount;
+      document.getElementById('bld-val').textContent = builderCount;
+      document.getElementById('str-val').textContent = starterCount;
+      
+      const totalBases = deluxeCount * 2 + builderCount * 1 + starterCount * 1;
+      const activeBases = totalBases > 0 ? totalBases : 2;
+      document.getElementById('summary-grid').textContent = `${activeBases * 5} x 5`;
+      
+      const maxTowers = deluxeCount * 90 + builderCount * 45 + starterCount * 30;
+      document.getElementById('summary-towers').textContent = maxTowers;
+
+      if (viewer && viewer.contentWindow) {
+        viewer.contentWindow.postMessage({ type: 'update-bases', baseCount: activeBases }, '*');
+      }
+    }
+
+    function revertConfig() {
+      deluxeCount = activeDeluxe;
+      builderCount = activeBuilder;
+      starterCount = activeStarter;
+      updateConfigUi();
+    }
+
+    document.getElementById('dlx-dec').addEventListener('click', () => { if(deluxeCount > 0) { deluxeCount--; updateConfigUi(); } });
+    document.getElementById('dlx-inc').addEventListener('click', () => { deluxeCount++; updateConfigUi(); });
+    document.getElementById('bld-dec').addEventListener('click', () => { if(builderCount > 0) { builderCount--; updateConfigUi(); } });
+    document.getElementById('bld-inc').addEventListener('click', () => { builderCount++; updateConfigUi(); });
+    document.getElementById('str-dec').addEventListener('click', () => { if(starterCount > 0) { starterCount--; updateConfigUi(); } });
+    document.getElementById('str-inc').addEventListener('click', () => { starterCount++; updateConfigUi(); });
+
+    document.getElementById('btn-config').addEventListener('click', () => {
+      deluxeCount = activeDeluxe;
+      builderCount = activeBuilder;
+      starterCount = activeStarter;
+      updateConfigUi();
+      document.getElementById('config-overlay').style.display = 'flex';
+    });
+    document.getElementById('btn-config-close').addEventListener('click', () => {
+      revertConfig();
+      document.getElementById('config-overlay').style.display = 'none';
+    });
+    document.getElementById('btn-config-cancel').addEventListener('click', () => {
+      revertConfig();
+      document.getElementById('config-overlay').style.display = 'none';
+    });
+    document.getElementById('btn-config-apply').addEventListener('click', () => {
+      activeDeluxe = deluxeCount;
+      activeBuilder = builderCount;
+      activeStarter = starterCount;
+      document.getElementById('config-overlay').style.display = 'none';
     });
 
     function sendSolve(seed) {
@@ -519,10 +666,18 @@
       
       document.getElementById('designing-overlay').style.display = 'flex';
 
+      const payload = {
+        type: 'solve',
+        seed: seed,
+        deluxe: activeDeluxe,
+        builder: activeBuilder,
+        starter: activeStarter
+      };
+
       if (window.onViewerMessage) {
-        window.onViewerMessage({ type: 'solve', seed: seed });
+        window.onViewerMessage(payload);
       } else if (viewer && viewer.contentWindow) {
-        viewer.contentWindow.postMessage({ type: 'solve', seed: seed }, '*');
+        viewer.contentWindow.postMessage(payload, '*');
       }
     }
 
@@ -650,6 +805,25 @@
         }
       }
     });
+
+    window.downloadPdfFromBase64 = function(base64Data, fileName) {
+      const binaryString = window.atob(base64Data);
+      const len = binaryString.length;
+      const bytes = new Uint8Array(len);
+      for (let i = 0; i < len; i++) {
+        bytes[i] = binaryString.charCodeAt(i);
+      }
+      const blob = new Blob([bytes], { type: 'application/pdf' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = fileName;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    };
   </script>
 </body>
+
 </html>

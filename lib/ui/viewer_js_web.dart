@@ -1,4 +1,5 @@
 // Web-specific JS bridge using dart:js_interop
+import 'dart:convert';
 import 'dart:js_interop';
 import 'dart:js_interop_unsafe';
 
@@ -37,7 +38,7 @@ void showViewerIframe() {
   } catch (_) {}
 }
 
-typedef WebSolveCallback = void Function(int? seed);
+typedef WebSolveCallback = void Function(int? seed, int deluxe, int builder, int starter);
 typedef WebInstructionsCallback = void Function();
 
 void registerWebSolveCallback(WebSolveCallback callback) {
@@ -56,7 +57,38 @@ void registerWebSolveCallback(WebSolveCallback callback) {
               seed = int.tryParse(seedAny.toDart);
             }
           }
-          callback(seed);
+
+          int deluxe = 1;
+          final dAny = data['deluxe'];
+          if (dAny != null) {
+            if (dAny is JSNumber) {
+              deluxe = dAny.toDartInt;
+            } else if (dAny is JSString) {
+              deluxe = int.tryParse(dAny.toDart) ?? 1;
+            }
+          }
+
+          int builder = 0;
+          final bAny = data['builder'];
+          if (bAny != null) {
+            if (bAny is JSNumber) {
+              builder = bAny.toDartInt;
+            } else if (bAny is JSString) {
+              builder = int.tryParse(bAny.toDart) ?? 0;
+            }
+          }
+
+          int starter = 0;
+          final sAny = data['starter'];
+          if (sAny != null) {
+            if (sAny is JSNumber) {
+              starter = sAny.toDartInt;
+            } else if (sAny is JSString) {
+              starter = int.tryParse(sAny.toDart) ?? 0;
+            }
+          }
+
+          callback(seed, deluxe, builder, starter);
         }
       }
     } catch (e) {
@@ -72,3 +104,13 @@ void registerWebInstructionsCallback(WebInstructionsCallback callback) {
     } catch (_) {}
   }).toJS;
 }
+
+void savePdfFile(List<int> bytes, String filename) {
+  try {
+    final base64Str = base64Encode(bytes);
+    _window.callMethod('downloadPdfFromBase64'.toJS, base64Str.toJS, filename.toJS);
+  } catch (e) {
+    // ignore
+  }
+}
+

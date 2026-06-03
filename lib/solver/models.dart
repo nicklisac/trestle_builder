@@ -161,7 +161,7 @@ const List<Piece> INVENTORY = [
   Piece(id: 7, cells: [Point(0, 0), Point(-1, 1), Point(0, 1), Point(1, 1), Point(-1, 2), Point(0, 2), Point(1, 2), Point(0, 3)], startIdx: 0, endIdx: 7, descends: true),
   Piece(id: 8, cells: [Point(0, 0), Point(0, 1), Point(-1, 1), Point(-2, 1), Point(-2, 2)], startIdx: 0, endIdx: 4, descends: false),
   Piece(id: 9, cells: [Point(0, 0), Point(0, 1), Point(1, 1), Point(1, 2), Point(2, 2), Point(2, 3)], startIdx: 0, endIdx: 5, descends: false),
-  Piece(id: 10, cells: [Point(0, 2), Point(1, 2), Point(2, 2), Point(3, 2), Point(1, 1), Point(2, 1), Point(3, 1), Point(1, 0), Point(2, 0), Point(3, 0)], startIdx: 0, endIdx: 5, descends: true),
+  Piece(id: 10, cells: [Point(0, 0), Point(1, 0), Point(2, 0), Point(3, 0), Point(1, 1), Point(2, 1), Point(3, 1), Point(1, 2), Point(2, 2), Point(3, 2)], startIdx: 0, endIdx: 5, descends: true),
   Piece(id: 11, cells: [Point(0, 0), Point(0, 1), Point(1, 1), Point(0, 2), Point(1, 2), Point(1, 3)], startIdx: 0, endIdx: 5, descends: true),
   Piece(id: 12, cells: [Point(0, 0), Point(0, 1), Point(0, 2), Point(1, 2), Point(2, 2), Point(2, 1), Point(2, 0), Point(1, 1)], startIdx: 0, endIdx: 6, descends: false),
   Piece(id: 13, cells: [Point(0, 0), Point(1, 0), Point(0, 1), Point(1, 1), Point(0, 2), Point(1, 2), Point(2, 2)], startIdx: 0, endIdx: 6, descends: false),
@@ -171,3 +171,38 @@ const List<Piece> INVENTORY = [
   Piece(id: 17, cells: [Point(0, 0), Point(0, 1), Point(0, 2), Point(1, 2), Point(2, 2)], startIdx: 0, endIdx: 4, descends: false),
   Piece(id: 18, cells: [Point(0, 0), Point(0, 1), Point(1, 1), Point(1, 2)], startIdx: 0, endIdx: 3, descends: false),
 ];
+
+List<Point> getBasePositions(int baseCount) {
+  if (baseCount <= 1) {
+    return [const Point(0, 0)];
+  } else if (baseCount == 2) {
+    return [const Point(0, 0), const Point(1, 0)];
+  } else if (baseCount == 3) {
+    return [const Point(0, 0), const Point(1, 0), const Point(0, 1)];
+  } else if (baseCount == 4) {
+    return [const Point(0, 0), const Point(1, 0), const Point(0, 1), const Point(1, 1)];
+  } else if (baseCount == 5) {
+    return [const Point(0, 0), const Point(1, 0), const Point(0, 1), const Point(1, 1), const Point(2, 0)];
+  } else if (baseCount == 6) {
+    return [const Point(0, 0), const Point(1, 0), const Point(2, 0), const Point(0, 1), const Point(1, 1), const Point(2, 1)];
+  } else if (baseCount == 7) {
+    return [const Point(0, 0), const Point(1, 0), const Point(2, 0), const Point(0, 1), const Point(1, 1), const Point(2, 1), const Point(0, 2)];
+  } else if (baseCount == 8) {
+    return [const Point(0, 0), const Point(1, 0), const Point(2, 0), const Point(0, 1), const Point(1, 1), const Point(2, 1), const Point(0, 2), const Point(1, 2)];
+  } else {
+    final list = <Point>[];
+    for (int y = 0; y < 3; y++) {
+      for (int x = 0; x < 3; x++) {
+        if (list.length < baseCount) {
+          list.add(Point(x, y));
+        }
+      }
+    }
+    int index = 9;
+    while (list.length < baseCount) {
+      list.add(Point(index % 3, (index / 3).floor()));
+      index++;
+    }
+    return list;
+  }
+}

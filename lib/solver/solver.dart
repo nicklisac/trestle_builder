@@ -11,6 +11,10 @@ class LcgRng {
     return _state;
   }
 
+  double nextDouble() {
+    return _next() / 0x7FFFFFFF;
+  }
+
   void shuffle<T>(List<T> list) {
     for (int i = list.length - 1; i > 0; i--) {
       final j = _next() % (i + 1);
@@ -119,14 +123,20 @@ Map<String, dynamic> solutionToDict(List<PlacedPiece> placed) {
 
 class Solver {
   final List<Piece> inventory;
+  final Map<int, int> pieceLimits;
+  final int baseWidth;
+  final int baseDepth;
+  final int maxZ;
+  final List<Point> basePositions;
+  final int catcherCount;
   final double timeoutSec;
   final int maxTowers;
   final int? seed;
   final LcgRng rng;
   final DateTime startTime;
-  final Validator validator = Validator();
+  late final Validator validator;
   List<PlacedPiece> best = [];
-  final Set<int> usedIds = {};
+  final Map<int, int> usedCounts = {};
   late final List<Piece> allOriented;
   final void Function(List<PlacedPiece>)? onProgress;
   final void Function(int iteration, int length)? onBestFound;
@@ -137,15 +147,22 @@ class Solver {
 
   Solver({
     required this.inventory,
+    required this.pieceLimits,
+    required this.basePositions,
+    required this.catcherCount,
+    this.maxZ = 14,
     this.timeoutSec = 60.0,
     this.maxIterations = 10000,
     this.maxTowers = 100,
     this.seed,
     this.onProgress,
     this.onBestFound,
-  })  : rng = LcgRng(seed ?? DateTime.now().millisecondsSinceEpoch % 1000000),
+  })  : baseWidth = _computeWidth(basePositions),
+        baseDepth = _computeDepth(basePositions),
+        rng = LcgRng(seed ?? DateTime.now().millisecondsSinceEpoch % 1000000),
         startTime = DateTime.now(),
         _lastUpdateTime = DateTime.now() {
+    validator = Validator(basePositions: basePositions, maxZ: maxZ);
     allOriented = <Piece>[];
     for (final piece in inventory) {
       for (final orient in getOrientations(piece)) {
@@ -155,9 +172,26 @@ class Solver {
     rng.shuffle(allOriented);
 
     // Select 5 unique mandatory piece IDs deterministically based on seed
-    final allIds = inventory.map((p) => p.id).toList();
+    final allIds = inventory.where((p) => (pieceLimits[p.id] ?? 0) > 0).map((p) => p.id).toList();
     rng.shuffle(allIds);
-    mandatoryIds.addAll(allIds.take(5));
+    final takeCount = allIds.length < 5 ? allIds.length : 5;
+    mandatoryIds.addAll(allIds.take(takeCount));
+  }
+
+  static int _computeWidth(List<Point> basePositions) {
+    int maxCols = 0;
+    for (final pos in basePositions) {
+      if (pos.x > maxCols) maxCols = pos.x;
+    }
+    return (maxCols + 1) * 5;
+  }
+
+  static int _computeDepth(List<Point> basePositions) {
+    int maxRows = 0;
+    for (final pos in basePositions) {
+      if (pos.y > maxRows) maxRows = pos.y;
+    }
+    return (maxRows + 1) * 5;
   }
 
   bool timedOut() {
@@ -185,9 +219,14 @@ class Solver {
     }
 
     if (sockets.isEmpty) {
-      // Check if all 5 mandatory pieces are included in the placement!
-      final containsAllMandatory = mandatoryIds.every((id) => usedIds.contains(id));
-      if (containsAllMandatory && validator.placed.length > best.length) {
+      // Check if all mandatory pieces are included in the placement!
+      final containsAllMandatory = mandatoryIds.every((id) => (usedCounts[id] ?? 0) > 0);
+
+      // Relaxed catcher constraint: require at least 1 catcher, up to the total catcherCount
+      final placedCatchers = validator.placed.where((p) => p.pieceId == 19).length;
+      final usesEnoughCatchers = placedCatchers >= 1 && placedCatchers <= catcherCount;
+
+      if (containsAllMandatory && usesEnoughCatchers && validator.placed.length > best.length) {
         best = List.of(validator.placed);
         if (onBestFound != null) {
           onBestFound!(_iterations, best.length);
@@ -210,30 +249,46 @@ class Solver {
         final cx2 = sx + 2 * dir.x;
         final cy2 = sy + 2 * dir.y;
 
-        // 1. In bounds check
-        if (cx1 < 0 || cx1 >= BASE_WIDTH || cy1 < 0 || cy1 >= BASE_DEPTH) continue;
-        if (cx2 < 0 || cx2 >= BASE_WIDTH || cy2 < 0 || cy2 >= BASE_DEPTH) continue;
-
-        // 2. Collision check
+        // 1. Collision check
         final cell0 = Point3(sx, sy, 0);
         final cell1 = Point3(cx1, cy1, 0);
         final cell2 = Point3(cx2, cy2, 0);
-        if (validator.occupied.contains(cell0) ||
-            validator.occupied.contains(cell1) ||
-            validator.occupied.contains(cell2)) continue;
+        if (validator.occupied.contains(cell0)) continue;
 
-        // 3. Support tower check for the bowl cells
-        if (validator.towerHeights.containsKey(Point(cx1, cy1)) ||
-            validator.towerHeights.containsKey(Point(cx2, cy2))) continue;
+        bool hasCollision = false;
+        if (cx1 >= 0 && cx1 < baseWidth && cy1 >= 0 && cy1 < baseDepth) {
+          if (validator.occupied.contains(cell1)) hasCollision = true;
+        }
+        if (cx2 >= 0 && cx2 < baseWidth && cy2 >= 0 && cy2 < baseDepth) {
+          if (validator.occupied.contains(cell2)) hasCollision = true;
+        }
+        if (hasCollision) continue;
 
-        // 4. Overlap/above check (no track pieces directly above the bowl cells)
+        // 2. Support tower check for the bowl cells (only if inside base bounds and on active base!)
+        bool towerCollision = false;
+        if (cx1 >= 0 && cx1 < baseWidth && cy1 >= 0 && cy1 < baseDepth && validator.isOnBase(cx1, cy1)) {
+          if (validator.towerHeights.containsKey(Point(cx1, cy1))) towerCollision = true;
+        }
+        if (cx2 >= 0 && cx2 < baseWidth && cy2 >= 0 && cy2 < baseDepth && validator.isOnBase(cx2, cy2)) {
+          if (validator.towerHeights.containsKey(Point(cx2, cy2))) towerCollision = true;
+        }
+        if (towerCollision) continue;
+
+        // 3. Overlap/above check (no track pieces directly above the bowl cells if inside base bounds and on active base)
         bool blockedAbove = false;
         for (final p in validator.placed) {
           for (final cell in p.cells) {
-            if ((cell.x == cx1 && cell.y == cy1 && cell.z > 0) ||
-                (cell.x == cx2 && cell.y == cy2 && cell.z > 0)) {
-              blockedAbove = true;
-              break;
+            if (cx1 >= 0 && cx1 < baseWidth && cy1 >= 0 && cy1 < baseDepth && validator.isOnBase(cx1, cy1)) {
+              if (cell.x == cx1 && cell.y == cy1 && cell.z > 0) {
+                blockedAbove = true;
+                break;
+              }
+            }
+            if (cx2 >= 0 && cx2 < baseWidth && cy2 >= 0 && cy2 < baseDepth && validator.isOnBase(cx2, cy2)) {
+              if (cell.x == cx2 && cell.y == cy2 && cell.z > 0) {
+                blockedAbove = true;
+                break;
+              }
             }
           }
           if (blockedAbove) break;
@@ -258,18 +313,46 @@ class Solver {
       return;
     }
 
-    final remainingMandatory = mandatoryIds.where((id) => !usedIds.contains(id)).toSet();
+    final remainingMandatory = mandatoryIds.where((id) => (usedCounts[id] ?? 0) == 0).toSet();
     final firstGroup = <Piece>[];
     final secondGroup = <Piece>[];
 
     for (final oriented in allOriented) {
-      if (usedIds.contains(oriented.id)) continue;
+      final count = usedCounts[oriented.id] ?? 0;
+      final limit = pieceLimits[oriented.id] ?? 0;
+      if (count >= limit) continue;
       if (remainingMandatory.contains(oriented.id)) {
         firstGroup.add(oriented);
       } else {
         secondGroup.add(oriented);
       }
     }
+
+    void weightedShuffle(List<Piece> list, int sz) {
+      final scored = list.map((piece) {
+        final isSplitter = piece.isSplitter;
+        final isFunnel = piece.id == 10 || piece.id == 7;
+        final double weight;
+        if (isSplitter) {
+          weight = sz * sz * 10.0;
+        } else if (isFunnel) {
+          weight = sz * sz * 2.0;
+        } else {
+          final diff = (maxZ - sz + 1).clamp(1, maxZ);
+          weight = diff * diff * 3.0;
+        }
+        final score = rng.nextDouble() * weight;
+        return (piece: piece, score: score);
+      }).toList();
+
+      scored.sort((a, b) => b.score.compareTo(a.score));
+
+      list.clear();
+      list.addAll(scored.map((item) => item.piece));
+    }
+
+    weightedShuffle(firstGroup, sz);
+    weightedShuffle(secondGroup, sz);
 
     final orderedOriented = [...firstGroup, ...secondGroup];
 
@@ -285,7 +368,7 @@ class Solver {
       validator.place(piece);
 
       if (countTowers() <= maxTowers) {
-        usedIds.add(piece.pieceId);
+        usedCounts[piece.pieceId] = (usedCounts[piece.pieceId] ?? 0) + 1;
 
         final nextSockets = sockets.sublist(1);
         if (piece.isSplitter) {
@@ -297,7 +380,7 @@ class Solver {
         }
 
         await build(nextSockets);
-        usedIds.remove(piece.pieceId);
+        usedCounts[piece.pieceId] = (usedCounts[piece.pieceId] ?? 1) - 1;
       }
 
       validator.undo(piece);
@@ -305,11 +388,13 @@ class Solver {
   }
 
   Future<List<PlacedPiece>> solve() async {
-    for (int startZ = MAX_Z; startZ >= 1; startZ--) {
+    for (int startZ = maxZ; startZ >= 1; startZ--) {
       final gridPositions = <Point>[];
-      for (int ox = 0; ox < BASE_WIDTH; ox++) {
-        for (int oy = 0; oy < BASE_DEPTH; oy++) {
-          gridPositions.add(Point(ox, oy));
+      for (int ox = 0; ox < baseWidth; ox++) {
+        for (int oy = 0; oy < baseDepth; oy++) {
+          if (validator.isOnBase(ox, oy)) {
+            gridPositions.add(Point(ox, oy));
+          }
         }
       }
       rng.shuffle(gridPositions);

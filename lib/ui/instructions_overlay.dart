@@ -1,14 +1,17 @@
 import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
 import '../models/solution.dart';
+import '../solver/models.dart' show getBasePositions;
 import 'viewer_js_stub.dart' if (dart.library.html) 'viewer_js_web.dart';
 
 // ── Piece metadata ────────────────────────────────────────────────────────────
 
 const _pieceColors = {
   1:  Color(0xFF2ECC71),
-  2:  Color(0xFF3498DB),
+  2:  Color(0xFFF1C40F),
   3:  Color(0xFFE74C3C),
   4:  Color(0xFFF1C40F),
   5:  Color(0xFFF1C40F),
@@ -62,6 +65,7 @@ class _InstructionLevel {
   /// key = "x,y", value = tower height (number of tower blocks)
   final Map<String, int> newTowers;
   final Map<String, int> prevTowers;
+  final int baseCount;
 
   const _InstructionLevel({
     required this.z,
@@ -69,6 +73,7 @@ class _InstructionLevel {
     required this.prevPieces,
     required this.newTowers,
     required this.prevTowers,
+    required this.baseCount,
   });
 }
 
@@ -143,6 +148,7 @@ List<_InstructionLevel> _buildLevels(SolutionData solution) {
       prevPieces: prevPieces,
       newTowers: newTowers,
       prevTowers: prevTowers,
+      baseCount: solution.baseCount,
     );
   }).toList();
 }
@@ -191,6 +197,53 @@ Path _outerBoundaryPath(
   return path;
 }
 
+List<int> _getStartDirection(PieceData p) {
+  if (p.cells.isEmpty) return [0, 1];
+  final sx = p.start[0];
+  final sy = p.start[1];
+
+  int startIdx = -1;
+  for (int i = 0; i < p.cells.length; i++) {
+    if (p.cells[i][0] == sx && p.cells[i][1] == sy) {
+      startIdx = i;
+      break;
+    }
+  }
+
+  if (startIdx != -1) {
+    for (int i = startIdx + 1; i < p.cells.length; i++) {
+      final cxVal = p.cells[i][0];
+      final cyVal = p.cells[i][1];
+      final dx = cxVal - sx;
+      final dy = cyVal - sy;
+      if ((dx.abs() + dy.abs()) == 1) {
+        return [dx, dy];
+      }
+    }
+    for (int i = startIdx - 1; i >= 0; i--) {
+      final cxVal = p.cells[i][0];
+      final cyVal = p.cells[i][1];
+      final dx = cxVal - sx;
+      final dy = cyVal - sy;
+      if ((dx.abs() + dy.abs()) == 1) {
+        return [dx, dy];
+      }
+    }
+  }
+
+  // Fallback: point towards the end of the piece
+  final ex = p.end[0];
+  final ey = p.end[1];
+  final dx = ex - sx;
+  final dy = ey - sy;
+  if (dx.abs() > dy.abs()) {
+    return [dx.sign, 0];
+  } else if (dy.abs() > dx.abs()) {
+    return [0, dy.sign];
+  }
+  return [0, 1];
+}
+
 // ── Custom Painter ────────────────────────────────────────────────────────────
 
 class _DiagramPainter extends CustomPainter {
@@ -208,52 +261,6 @@ class _DiagramPainter extends CustomPainter {
     required this.gridMaxY,
   });
 
-  List<int> _getStartDirection(PieceData p) {
-    if (p.cells.isEmpty) return [0, 1];
-    final sx = p.start[0];
-    final sy = p.start[1];
-
-    int startIdx = -1;
-    for (int i = 0; i < p.cells.length; i++) {
-      if (p.cells[i][0] == sx && p.cells[i][1] == sy) {
-        startIdx = i;
-        break;
-      }
-    }
-
-    if (startIdx != -1) {
-      for (int i = startIdx + 1; i < p.cells.length; i++) {
-        final cxVal = p.cells[i][0];
-        final cyVal = p.cells[i][1];
-        final dx = cxVal - sx;
-        final dy = cyVal - sy;
-        if ((dx.abs() + dy.abs()) == 1) {
-          return [dx, dy];
-        }
-      }
-      for (int i = startIdx - 1; i >= 0; i--) {
-        final cxVal = p.cells[i][0];
-        final cyVal = p.cells[i][1];
-        final dx = cxVal - sx;
-        final dy = cyVal - sy;
-        if ((dx.abs() + dy.abs()) == 1) {
-          return [dx, dy];
-        }
-      }
-    }
-
-    // Fallback: point towards the end of the piece
-    final ex = p.end[0];
-    final ey = p.end[1];
-    final dx = ex - sx;
-    final dy = ey - sy;
-    if (dx.abs() > dy.abs()) {
-      return [dx.sign, 0];
-    } else if (dy.abs() > dx.abs()) {
-      return [0, dy.sign];
-    }
-    return [0, 1];
-  }
 
   void _drawStartTriangle(
     Canvas canvas,
@@ -404,6 +411,29 @@ class _DiagramPainter extends CustomPainter {
     double cx(int gx) => originX + (gx - gridMinX) * cellSize;
     double cy(int gy) => originY + (gy - gridMinY) * cellSize;
 
+    // ── 0. Base Plates Background ───────────────────────────────────────────
+    final baseFillPaint = Paint()
+      ..color = const Color(0xFFF1F1F4)
+      ..style = PaintingStyle.fill;
+    final baseBorderPaint = Paint()
+      ..color = const Color(0xFFB8B8C8)
+      ..strokeWidth = 1.8
+      ..style = PaintingStyle.stroke;
+
+    final basePositions = getBasePositions(level.baseCount);
+    for (final bp in basePositions) {
+      final bx = bp.x * 5;
+      final by = bp.y * 5;
+      canvas.drawRect(
+        Rect.fromLTRB(cx(bx), cy(by), cx(bx + 5), cy(by + 5)),
+        baseFillPaint,
+      );
+      canvas.drawRect(
+        Rect.fromLTRB(cx(bx), cy(by), cx(bx + 5), cy(by + 5)),
+        baseBorderPaint,
+      );
+    }
+
     // ── 1. Grid background ──────────────────────────────────────────────────
     final gridLinePaint = Paint()
       ..color = const Color(0xFFCCCCCC)
@@ -478,56 +508,7 @@ class _DiagramPainter extends CustomPainter {
       canvas.drawRRect(tRect, prevTowerPaint);
     }
 
-    // ── 4. New towers (bold black rounded squares, 10% smaller, no X) ────────
-    final newTowerFill = Paint()
-      ..color = const Color(0x14000000)
-      ..style = PaintingStyle.fill;
-    final newTowerStroke = Paint()
-      ..color = const Color(0xFF111111)
-      ..strokeWidth = 2.2
-      ..strokeCap = StrokeCap.round
-      ..strokeJoin = StrokeJoin.round
-      ..style = PaintingStyle.stroke;
-
-    final labelStyle = TextStyle(
-      color: const Color(0xFF111111),
-      fontSize: (cellSize * 0.28).clamp(8.0, 13.0),
-      fontWeight: FontWeight.w900,
-    );
-
-    for (final entry in level.newTowers.entries) {
-      final parts = entry.key.split(',');
-      final gx = int.parse(parts[0]);
-      final gy = int.parse(parts[1]);
-      final height = entry.value;
-
-      final tRRect = RRect.fromRectAndRadius(
-        Rect.fromLTWH(
-          cx(gx) + towerInset, cy(gy) + towerInset,
-          cellSize - towerInset * 2, cellSize - towerInset * 2,
-        ),
-        Radius.circular(cellSize * 0.10),
-      );
-      canvas.drawRRect(tRRect, newTowerFill);
-      canvas.drawRRect(tRRect, newTowerStroke);
-
-      // Height label if > 1 (perfectly centered, using e.g., '2x' or '3x')
-      if (height > 1) {
-        final tp = TextPainter(
-          text: TextSpan(text: '${height}x', style: labelStyle),
-          textDirection: TextDirection.ltr,
-        )..layout();
-        tp.paint(
-          canvas,
-          Offset(
-            cx(gx) + (cellSize - tp.width) / 2,
-            cy(gy) + (cellSize - tp.height) / 2,
-          ),
-        );
-      }
-    }
-
-    // ── 5. New piece outlines & indicators (outer boundary in piece color) ───
+    // ── 4. New piece outlines & indicators (outer boundary in piece color) ───
     for (final p in level.newPieces) {
       final color = _pieceColor(p.pieceId);
       final footprint = p.cells.map((c) => (c[0], c[1])).toSet();
@@ -597,6 +578,51 @@ class _DiagramPainter extends CustomPainter {
         }
       }
     }
+
+    // ── 5. New towers (bold black rounded outlines, layered on top of track lines, hollow) ──
+    final newTowerStroke = Paint()
+      ..color = const Color(0xFF111111)
+      ..strokeWidth = 2.2
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round
+      ..style = PaintingStyle.stroke;
+
+    final labelStyle = TextStyle(
+      color: const Color(0xFF111111),
+      fontSize: (cellSize * 0.28).clamp(8.0, 13.0),
+      fontWeight: FontWeight.w900,
+    );
+
+    for (final entry in level.newTowers.entries) {
+      final parts = entry.key.split(',');
+      final gx = int.parse(parts[0]);
+      final gy = int.parse(parts[1]);
+      final height = entry.value;
+
+      final tRRect = RRect.fromRectAndRadius(
+        Rect.fromLTWH(
+          cx(gx) + towerInset, cy(gy) + towerInset,
+          cellSize - towerInset * 2, cellSize - towerInset * 2,
+        ),
+        Radius.circular(cellSize * 0.10),
+      );
+      canvas.drawRRect(tRRect, newTowerStroke);
+
+      // Height label if > 1 (perfectly centered, using e.g., '2x' or '3x')
+      if (height > 1) {
+        final tp = TextPainter(
+          text: TextSpan(text: '${height}x', style: labelStyle),
+          textDirection: TextDirection.ltr,
+        )..layout();
+        tp.paint(
+          canvas,
+          Offset(
+            cx(gx) + (cellSize - tp.width) / 2,
+            cy(gy) + (cellSize - tp.height) / 2,
+          ),
+        );
+      }
+    }
   }
 
   @override
@@ -647,29 +673,17 @@ class _InstructionsOverlayState extends State<InstructionsOverlay> {
   }
 
   void _computeGridBounds() {
-    int minX = 9999, maxX = -9999, minY = 9999, maxY = -9999;
-    for (final p in widget.solution.pieces) {
-      // Include all cell positions
-      for (final c in p.cells) {
-        minX = math.min(minX, c[0]);
-        maxX = math.max(maxX, c[0]);
-        minY = math.min(minY, c[1]);
-        maxY = math.max(maxY, c[1]);
-      }
-      // Include start and end tower positions (support towers are at outputs for splitters)
-      final towerPoints = p.isSplitter ? p.outputs : [p.start, p.end];
-      for (final pt in towerPoints) {
-        minX = math.min(minX, pt[0]);
-        maxX = math.max(maxX, pt[0]);
-        minY = math.min(minY, pt[1]);
-        maxY = math.max(maxY, pt[1]);
-      }
+    final basePositions = getBasePositions(widget.solution.baseCount);
+    int maxCols = 0;
+    int maxRows = 0;
+    for (final pos in basePositions) {
+      if (pos.x > maxCols) maxCols = pos.x;
+      if (pos.y > maxRows) maxRows = pos.y;
     }
-    // Add 1-cell margin all around so the full track breathes
-    _gridMinX = minX - 1;
-    _gridMaxX = maxX + 1;
-    _gridMinY = minY - 1;
-    _gridMaxY = maxY + 1;
+    _gridMinX = 0;
+    _gridMaxX = (maxCols + 1) * 5 - 1;
+    _gridMinY = 0;
+    _gridMaxY = (maxRows + 1) * 5 - 1;
   }
 
   @override
@@ -774,6 +788,32 @@ class _InstructionsOverlayState extends State<InstructionsOverlay> {
               ],
             ),
           ),
+          // Save PDF Button
+          GestureDetector(
+            onTap: _exporting ? null : _exportToPdf,
+            child: Container(
+              width: 36,
+              height: 36,
+              margin: const EdgeInsets.only(right: 10),
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.06),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: Colors.white.withOpacity(0.12)),
+              ),
+              child: Center(
+                child: _exporting
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Color(0xFFAAAAAA),
+                        ),
+                      )
+                    : const Icon(Icons.picture_as_pdf, color: Color(0xFFAAAAAA), size: 18),
+              ),
+            ),
+          ),
           GestureDetector(
             onTap: widget.onClose,
             child: Container(
@@ -791,6 +831,7 @@ class _InstructionsOverlayState extends State<InstructionsOverlay> {
       ),
     );
   }
+
 
   Widget _buildJumpBar() {
     return Container(
@@ -1064,4 +1105,672 @@ class _InstructionsOverlayState extends State<InstructionsOverlay> {
       ),
     );
   }
+
+  bool _exporting = false;
+
+  Future<void> _exportToPdf() async {
+    if (_exporting) return;
+    setState(() => _exporting = true);
+
+    try {
+      final pdf = pw.Document();
+
+      for (int index = 0; index < _levels.length; index++) {
+        final level = _levels[index];
+        final isBase = level.z == 0;
+        final totalNewTowerBlocks = level.newTowers.values.fold(0, (sum, val) => sum + val);
+
+        pdf.addPage(
+          pw.Page(
+            pageFormat: PdfPageFormat.a4,
+            margin: const pw.EdgeInsets.all(32),
+            build: (pw.Context context) {
+              return pw.Column(
+                crossAxisAlignment: pw.CrossAxisAlignment.start,
+                children: [
+                  // Header Row
+                  pw.Row(
+                    mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                    children: [
+                      pw.Column(
+                        crossAxisAlignment: pw.CrossAxisAlignment.start,
+                        children: [
+                          pw.Text(
+                            'TRESTLE TRACK BUILDER',
+                            style: pw.TextStyle(
+                              color: PdfColor.fromInt(0xFFE94560),
+                              fontSize: 10,
+                              fontWeight: pw.FontWeight.bold,
+                              letterSpacing: 1.5,
+                            ),
+                          ),
+                          pw.SizedBox(height: 2),
+                          pw.Text(
+                            'STEP ${index + 1} of ${_levels.length}',
+                            style: pw.TextStyle(
+                              color: PdfColor.fromInt(0xFF111111),
+                              fontSize: 20,
+                              fontWeight: pw.FontWeight.bold,
+                            ),
+                          ),
+                        ],
+                      ),
+                      pw.Container(
+                        padding: const pw.EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                        decoration: pw.BoxDecoration(
+                          color: PdfColor.fromInt(0xFFE94560),
+                          borderRadius: const pw.BorderRadius.all(pw.Radius.circular(12)),
+                        ),
+                        child: pw.Text(
+                          isBase ? 'GROUND LEVEL' : 'HEIGHT LEVEL ${level.z}',
+                          style: pw.TextStyle(
+                            color: PdfColor.fromInt(0xFFFFFFFF),
+                            fontSize: 11,
+                            fontWeight: pw.FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  pw.SizedBox(height: 16),
+                  pw.Divider(color: PdfColor.fromInt(0xFFEEEEEE), thickness: 1),
+                  pw.SizedBox(height: 16),
+
+                  // Diagram Container
+                  pw.Expanded(
+                    child: pw.Center(
+                      child: pw.Container(
+                        decoration: pw.BoxDecoration(
+                          color: PdfColor.fromInt(0xFFF7F5F0),
+                          borderRadius: const pw.BorderRadius.all(pw.Radius.circular(16)),
+                          border: pw.Border.all(color: PdfColor.fromInt(0xFFE0DCD3), width: 1),
+                        ),
+                        padding: const pw.EdgeInsets.all(16),
+                        child: pw.AspectRatio(
+                          aspectRatio: 16 / 10,
+                          child: pw.Stack(
+                            children: [
+                              pw.CustomPaint(
+                                size: const PdfPoint(500, 312.5),
+                                painter: (PdfGraphics canvas, PdfPoint size) {
+                                  _paintPdfDiagram(canvas, size, level);
+                                },
+                              ),
+                              ..._buildPdfLabels(level, 500, 312.5),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                  pw.SizedBox(height: 20),
+
+                  // Legend / Instructions
+                  pw.Row(
+                    crossAxisAlignment: pw.CrossAxisAlignment.start,
+                    children: [
+                      pw.Container(
+                        width: 14,
+                        height: 14,
+                        margin: const pw.EdgeInsets.only(top: 2),
+                        decoration: pw.BoxDecoration(
+                          border: pw.Border.all(color: PdfColor.fromInt(0xFF888888), width: 1.5),
+                          borderRadius: const pw.BorderRadius.all(pw.Radius.circular(3)),
+                        ),
+                      ),
+                      pw.SizedBox(width: 8),
+                      pw.Expanded(
+                        child: pw.Text(
+                          'Place towers first, then tracks. A number inside a tower indicates how many tower blocks to place.',
+                          style: pw.TextStyle(
+                            color: PdfColor.fromInt(0xFF666666),
+                            fontSize: 9.5,
+                            fontWeight: pw.FontWeight.normal,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  pw.SizedBox(height: 16),
+
+                  // Pieces to place
+                  pw.Text(
+                    'PIECES TO PLACE AT THIS STEP',
+                    style: pw.TextStyle(
+                      color: PdfColor.fromInt(0xFFE94560),
+                      fontSize: 9,
+                      fontWeight: pw.FontWeight.bold,
+                      letterSpacing: 1.2,
+                    ),
+                  ),
+                  pw.SizedBox(height: 8),
+                  pw.Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      if (totalNewTowerBlocks > 0) _buildPdfTowerChip(totalNewTowerBlocks),
+                      ...level.newPieces.map((p) => _buildPdfPieceChip(p)),
+                    ],
+                  ),
+                ],
+              );
+            },
+          ),
+        );
+      }
+
+      final bytes = await pdf.save();
+      final seed = widget.solution.seed;
+      savePdfFile(bytes, 'trestle_track_instructions_$seed.pdf');
+    } catch (e) {
+      debugPrint('Error generating PDF: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to save PDF: $e')),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _exporting = false);
+      }
+    }
+  }
+
+  void _paintPdfDiagram(PdfGraphics canvas, PdfPoint size, _InstructionLevel level) {
+    final cols = _gridMaxX - _gridMinX + 1;
+    final rows = _gridMaxY - _gridMinY + 1;
+    if (cols <= 0 || rows <= 0) return;
+
+    final width = size.x;
+    final height = size.y;
+
+    const padding = 16.0;
+    final cellW = (width - padding * 2) / cols;
+    final cellH = (height - padding * 2) / rows;
+    final cellSize = math.min(cellW, cellH);
+
+    final pieceInset = cellSize * 0.05;
+    final towerInset = cellSize * 0.15;
+
+    final totalW = cellSize * cols;
+    final totalH = cellSize * rows;
+    final originX = (width - totalW) / 2;
+    final originY = (height - totalH) / 2;
+
+    double cx(int gx) => originX + (gx - _gridMinX) * cellSize;
+    double cy(int gy) => originY + (gy - _gridMinY) * cellSize;
+
+    double pdfY(double y) => height - y;
+
+    // Helper: draw rect
+    void drawPdfRect(double x, double y, double w, double h) {
+      canvas.drawRect(x, height - (y + h), w, h);
+    }
+
+    // Helper: draw rounded rect
+    void drawPdfRRect(double x, double y, double w, double h, double r) {
+      canvas.drawRRect(x, height - (y + h), w, h, r, r);
+    }
+
+    // Helper: draw ellipse/circle
+    void drawPdfCircle(double px, double py, double r) {
+      canvas.drawEllipse(px, height - py, r, r);
+    }
+
+    // Helper: draw start triangle
+    void drawPdfStartTriangle(PieceData p, PdfColor color, {bool isWashedOut = false}) {
+      final sx = p.start[0];
+      final sy = p.start[1];
+      final px = cx(sx) + cellSize / 2;
+      final py = cy(sy) + cellSize / 2;
+      final dir = _getStartDirection(p);
+      final dx = dir[0];
+      final dy = dir[1];
+
+      final r = cellSize * 0.15;
+      
+      void addPath() {
+        if (dx == 1 && dy == 0) {
+          canvas.moveTo(px + r, height - py);
+          canvas.lineTo(px - r, height - (py - r * 0.85));
+          canvas.lineTo(px - r, height - (py + r * 0.85));
+        } else if (dx == -1 && dy == 0) {
+          canvas.moveTo(px - r, height - py);
+          canvas.lineTo(px + r, height - (py - r * 0.85));
+          canvas.lineTo(px + r, height - (py + r * 0.85));
+        } else if (dx == 0 && dy == 1) {
+          canvas.moveTo(px, height - (py + r));
+          canvas.lineTo(px - r * 0.85, height - (py - r));
+          canvas.lineTo(px + r * 0.85, height - (py - r));
+        } else {
+          canvas.moveTo(px, height - (py - r));
+          canvas.lineTo(px - r * 0.85, height - (py + r));
+          canvas.lineTo(px + r * 0.85, height - (py + r));
+        }
+        canvas.closePath();
+      }
+
+      addPath();
+      final fillColor = isWashedOut ? PdfColor(color.red, color.green, color.blue, 0.20) : color;
+      canvas.setFillColor(fillColor);
+      canvas.fillPath();
+
+      addPath();
+      final strokeColor = isWashedOut ? PdfColor.fromInt(0x55111111) : PdfColor.fromInt(0xFF111111);
+      canvas.setStrokeColor(strokeColor);
+      canvas.setLineWidth(isWashedOut ? 1.0 : 1.8);
+      canvas.setLineCap(PdfLineCap.round);
+      canvas.setLineJoin(PdfLineJoin.round);
+      canvas.strokePath();
+    }
+
+    // Helper: draw end circle
+    void drawPdfEndCircle(int gx, int gy, PdfColor color, {bool isWashedOut = false}) {
+      final px = cx(gx) + cellSize / 2;
+      final py = cy(gy) + cellSize / 2;
+      final cr = cellSize * 0.12;
+
+      final fillColor = isWashedOut ? PdfColor(color.red, color.green, color.blue, 0.20) : color;
+      canvas.setFillColor(fillColor);
+      drawPdfCircle(px, py, cr);
+      canvas.fillPath();
+
+      final strokeColor = isWashedOut ? PdfColor.fromInt(0x55111111) : PdfColor.fromInt(0xFF111111);
+      canvas.setStrokeColor(strokeColor);
+      canvas.setLineWidth(isWashedOut ? 1.0 : 1.8);
+      drawPdfCircle(px, py, cr);
+      canvas.strokePath();
+
+      if (!isWashedOut) {
+        canvas.setFillColor(PdfColor.fromInt(0xFFFFFFFF));
+        drawPdfCircle(px, py, cr * 0.35);
+        canvas.fillPath();
+      }
+    }
+
+    // Helper: draw splitter diamond
+    void drawPdfSplitterDiamond(PieceData p, PdfColor color) {
+      final sx = p.start[0];
+      final sy = p.start[1];
+      final px = cx(sx) + cellSize / 2;
+      final py = cy(sy) + cellSize / 2;
+
+      final r = cellSize * 0.15;
+      
+      void addPath() {
+        canvas.moveTo(px, height - (py - r));
+        canvas.lineTo(px + r, height - py);
+        canvas.lineTo(px, height - (py + r));
+        canvas.lineTo(px - r, height - py);
+        canvas.closePath();
+      }
+
+      addPath();
+      canvas.setFillColor(color);
+      canvas.fillPath();
+
+      addPath();
+      canvas.setStrokeColor(PdfColor.fromInt(0xFF111111));
+      canvas.setLineWidth(1.8);
+      canvas.setLineCap(PdfLineCap.round);
+      canvas.setLineJoin(PdfLineJoin.round);
+      canvas.strokePath();
+    }
+
+    // Helper: draw outer boundary path
+    void drawPdfOuterBoundary(Set<(int, int)> cells, double inset) {
+      for (final (cxVal, cyVal) in cells) {
+        final x0 = cx(cxVal) + inset;
+        final y0 = cy(cyVal) + inset;
+        final x1 = cx(cxVal) + cellSize - inset;
+        final y1 = cy(cyVal) + cellSize - inset;
+
+        // Top edge
+        if (!cells.contains((cxVal, cyVal - 1))) {
+          canvas.moveTo(x0, height - y0);
+          canvas.lineTo(x1, height - y0);
+        }
+        // Bottom edge
+        if (!cells.contains((cxVal, cyVal + 1))) {
+          canvas.moveTo(x0, height - y1);
+          canvas.lineTo(x1, height - y1);
+        }
+        // Left edge
+        if (!cells.contains((cxVal - 1, cyVal))) {
+          canvas.moveTo(x0, height - y0);
+          canvas.lineTo(x0, height - y1);
+        }
+        // Right edge
+        if (!cells.contains((cxVal + 1, cyVal))) {
+          canvas.moveTo(x1, height - y0);
+          canvas.lineTo(x1, height - y1);
+        }
+      }
+    }
+
+    // 1. Grid background
+    canvas.setLineWidth(1.2);
+    canvas.setStrokeColor(PdfColor.fromInt(0xFFCCCCCC));
+    canvas.setLineCap(PdfLineCap.round);
+
+    for (int gx = _gridMinX; gx <= _gridMaxX + 1; gx++) {
+      canvas.drawLine(cx(gx), pdfY(cy(_gridMinY)), cx(gx), pdfY(cy(_gridMaxY + 1)));
+      canvas.strokePath();
+    }
+    for (int gy = _gridMinY; gy <= _gridMaxY + 1; gy++) {
+      canvas.drawLine(cx(_gridMinX), pdfY(cy(gy)), cx(_gridMaxX + 1), pdfY(cy(gy)));
+      canvas.strokePath();
+    }
+
+    // 2. Previous pieces (washed out - solid blended light pastels)
+    for (final p in level.prevPieces) {
+      final color = PdfColor.fromInt(_pieceColor(p.pieceId).toARGB32());
+      final footprint = p.cells.map((c) => (c[0], c[1])).toSet();
+
+      // Faint mix color (5% original color, 95% white)
+      final mixedFill = PdfColor(
+        color.red * 0.05 + 0.95,
+        color.green * 0.05 + 0.95,
+        color.blue * 0.05 + 0.95,
+      );
+      canvas.setFillColor(mixedFill);
+      for (final (gx, gy) in footprint) {
+        drawPdfRect(cx(gx) + pieceInset, cy(gy) + pieceInset, cellSize - pieceInset * 2, cellSize - pieceInset * 2);
+        canvas.fillPath();
+      }
+
+      // Faint mixed stroke (12% original color, 88% white)
+      final mixedStroke = PdfColor(
+        color.red * 0.12 + 0.88,
+        color.green * 0.12 + 0.88,
+        color.blue * 0.12 + 0.88,
+      );
+      canvas.setStrokeColor(mixedStroke);
+      canvas.setLineWidth(1.0);
+      canvas.setLineCap(PdfLineCap.round);
+      canvas.setLineJoin(PdfLineJoin.round);
+      drawPdfOuterBoundary(footprint, pieceInset);
+      canvas.strokePath();
+    }
+
+    // 3. Previous towers
+    canvas.setStrokeColor(PdfColor.fromInt(0xFFBBBBBB));
+    canvas.setLineWidth(1.2);
+    canvas.setLineCap(PdfLineCap.round);
+    canvas.setLineJoin(PdfLineJoin.round);
+
+    for (final key in level.prevTowers.keys) {
+      final parts = key.split(',');
+      final gx = int.parse(parts[0]);
+      final gy = int.parse(parts[1]);
+      drawPdfRRect(cx(gx) + towerInset, cy(gy) + towerInset, cellSize - towerInset * 2, cellSize - towerInset * 2, cellSize * 0.10);
+      canvas.strokePath();
+    }
+
+    // 4. New pieces (tracks - drawn below towers)
+    for (final p in level.newPieces) {
+      final color = PdfColor.fromInt(_pieceColor(p.pieceId).toARGB32());
+      final footprint = p.cells.map((c) => (c[0], c[1])).toSet();
+
+      // Faint blend fill (10% original color, 90% white to prevent blocking towers)
+      final mixedFill = PdfColor(
+        color.red * 0.10 + 0.90,
+        color.green * 0.10 + 0.90,
+        color.blue * 0.10 + 0.90,
+      );
+      canvas.setFillColor(mixedFill);
+      for (final (gx, gy) in footprint) {
+        drawPdfRect(cx(gx) + pieceInset, cy(gy) + pieceInset, cellSize - pieceInset * 2, cellSize - pieceInset * 2);
+        canvas.fillPath();
+      }
+
+      // Outline in full, bold color
+      canvas.setStrokeColor(color);
+      canvas.setLineWidth(2.8);
+      canvas.setLineCap(PdfLineCap.round);
+      canvas.setLineJoin(PdfLineJoin.round);
+      drawPdfOuterBoundary(footprint, pieceInset);
+      canvas.strokePath();
+
+      // Indicators
+      if (p.isSplitter) {
+        drawPdfSplitterDiamond(p, color);
+        for (final out in p.outputs) {
+          drawPdfEndCircle(out[0], out[1], color, isWashedOut: false);
+        }
+      } else {
+        drawPdfStartTriangle(p, color, isWashedOut: false);
+        drawPdfEndCircle(p.end[0], p.end[1], color, isWashedOut: false);
+        for (final out in p.outputs) {
+          drawPdfEndCircle(out[0], out[1], color, isWashedOut: false);
+        }
+      }
+    }
+
+    // 5. New towers (drawn on top as clean, hollow outlines)
+    for (final entry in level.newTowers.entries) {
+      final parts = entry.key.split(',');
+      final gx = int.parse(parts[0]);
+      final gy = int.parse(parts[1]);
+
+      // Outlines only (NO black or opaque fill!)
+      canvas.setStrokeColor(PdfColor.fromInt(0xFF111111));
+      canvas.setLineWidth(2.2);
+      canvas.setLineCap(PdfLineCap.round);
+      canvas.setLineJoin(PdfLineJoin.round);
+      drawPdfRRect(cx(gx) + towerInset, cy(gy) + towerInset, cellSize - towerInset * 2, cellSize - towerInset * 2, cellSize * 0.10);
+      canvas.strokePath();
+    }
+  }
+
+  List<pw.Widget> _buildPdfLabels(_InstructionLevel level, double width, double height) {
+    final layout = _PdfLayoutHelper(
+      width: width,
+      height: height,
+      gridMinX: _gridMinX,
+      gridMaxX: _gridMaxX,
+      gridMinY: _gridMinY,
+      gridMaxY: _gridMaxY,
+    );
+
+
+    final widgets = <pw.Widget>[];
+
+    // New towers heights (> 1)
+    for (final entry in level.newTowers.entries) {
+      final parts = entry.key.split(',');
+      final gx = int.parse(parts[0]);
+      final gy = int.parse(parts[1]);
+      final heightVal = entry.value;
+
+      if (heightVal > 1) {
+        widgets.add(
+          pw.Positioned(
+            left: layout.labelX(gx),
+            top: layout.labelY(gy),
+            child: pw.SizedBox(
+              width: layout.cellSize,
+              height: layout.cellSize,
+              child: pw.Center(
+                child: pw.Text(
+                  '${heightVal}x',
+                  style: pw.TextStyle(
+                    fontSize: (layout.cellSize * 0.28).clamp(8.0, 13.0),
+                    fontWeight: pw.FontWeight.bold,
+                    color: PdfColor.fromInt(0xFF111111),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+      }
+    }
+
+    // Decline '2' markers
+    final towerInset = layout.cellSize * 0.15;
+    for (final p in level.newPieces) {
+      if (!p.isSplitter && p.end[2] != p.start[2]) {
+        final sx = p.start[0];
+        final sy = p.start[1];
+        widgets.add(
+          pw.Positioned(
+            left: layout.labelX(sx),
+            top: layout.labelY(sy),
+            child: pw.SizedBox(
+              width: layout.cellSize,
+              height: layout.cellSize,
+              child: pw.Align(
+                alignment: pw.Alignment.bottomRight,
+                child: pw.Container(
+                  margin: pw.EdgeInsets.only(
+                    right: towerInset + layout.cellSize * 0.04,
+                    bottom: towerInset + layout.cellSize * 0.03,
+                  ),
+                  child: pw.Text(
+                    '2',
+                    style: pw.TextStyle(
+                      fontSize: (layout.cellSize * 0.28).clamp(8.0, 13.0),
+                      fontWeight: pw.FontWeight.bold,
+                      color: PdfColor.fromInt(0xFF111111),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+      }
+    }
+
+    return widgets;
+  }
+
+  pw.Widget _buildPdfTowerChip(int count) {
+    return pw.Container(
+      padding: const pw.EdgeInsets.fromLTRB(6, 4, 10, 4),
+      decoration: pw.BoxDecoration(
+        color: PdfColor.fromInt(0x0E555555),
+        borderRadius: const pw.BorderRadius.all(pw.Radius.circular(6)),
+        border: pw.Border.all(color: PdfColor.fromInt(0x22888888), width: 1),
+      ),
+      child: pw.Row(
+        mainAxisSize: pw.MainAxisSize.min,
+        children: [
+          pw.Container(
+            width: 20,
+            height: 20,
+            decoration: pw.BoxDecoration(
+              color: PdfColor.fromInt(0xFF333333),
+              borderRadius: const pw.BorderRadius.all(pw.Radius.circular(4)),
+              border: pw.Border.all(color: PdfColor.fromInt(0xFF555555), width: 1),
+            ),
+            child: pw.Center(
+              child: pw.Text(
+                'T',
+                style: pw.TextStyle(
+                  color: PdfColor.fromInt(0xFFFFFFFF),
+                  fontSize: 8.5,
+                  fontWeight: pw.FontWeight.bold,
+                ),
+              ),
+            ),
+          ),
+          pw.SizedBox(width: 6),
+          pw.Text(
+            'Support Towers: $count',
+            style: pw.TextStyle(
+              color: PdfColor.fromInt(0xFF222222),
+              fontSize: 10.5,
+              fontWeight: pw.FontWeight.bold,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  pw.Widget _buildPdfPieceChip(PieceData p) {
+    final colorVal = _pieceColor(p.pieceId).toARGB32();
+    final color = PdfColor.fromInt(colorVal);
+    final name = _pieceName(p.pieceId);
+    
+    return pw.Container(
+      padding: const pw.EdgeInsets.fromLTRB(6, 4, 10, 4),
+      decoration: pw.BoxDecoration(
+        color: PdfColor(color.red, color.green, color.blue, 0.10),
+        borderRadius: const pw.BorderRadius.all(pw.Radius.circular(6)),
+        border: pw.Border.all(color: PdfColor(color.red, color.green, color.blue, 0.40), width: 1),
+      ),
+      child: pw.Row(
+        mainAxisSize: pw.MainAxisSize.min,
+        children: [
+          pw.Container(
+            width: 20,
+            height: 20,
+            decoration: pw.BoxDecoration(
+              color: color,
+              borderRadius: const pw.BorderRadius.all(pw.Radius.circular(4)),
+            ),
+            child: pw.Center(
+              child: pw.Text(
+                'P${p.pieceId}',
+                style: pw.TextStyle(
+                  color: PdfColor.fromInt(0xFFFFFFFF),
+                  fontSize: 8.5,
+                  fontWeight: pw.FontWeight.bold,
+                ),
+              ),
+            ),
+          ),
+          pw.SizedBox(width: 6),
+          pw.Text(
+            name,
+            style: pw.TextStyle(
+              color: PdfColor.fromInt(0xFF222222),
+              fontSize: 10.5,
+              fontWeight: pw.FontWeight.bold,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
+
+class _PdfLayoutHelper {
+  final double width;
+  final double height;
+  final int gridMinX;
+  final int gridMaxX;
+  final int gridMinY;
+  final int gridMaxY;
+
+  late final double cellSize;
+  late final double originX;
+  late final double originY;
+
+  _PdfLayoutHelper({
+    required this.width,
+    required this.height,
+    required this.gridMinX,
+    required this.gridMaxX,
+    required this.gridMinY,
+    required this.gridMaxY,
+  }) {
+    final cols = gridMaxX - gridMinX + 1;
+    final rows = gridMaxY - gridMinY + 1;
+    
+    const padding = 16.0;
+    final cellW = (width - padding * 2) / cols;
+    final cellH = (height - padding * 2) / rows;
+    cellSize = math.min(cellW, cellH);
+
+    final totalW = cellSize * cols;
+    final totalH = cellSize * rows;
+    originX = (width - totalW) / 2;
+    originY = (height - totalH) / 2;
+  }
+
+  double labelX(int gx) => originX + (gx - gridMinX) * cellSize;
+  double labelY(int gy) => originY + (gy - gridMinY) * cellSize;
+}
+

@@ -22,8 +22,11 @@ void main() async {
     
     final solver = ts_solver.Solver(
       inventory: ts_models.INVENTORY,
+      pieceLimits: { for (var p in ts_models.INVENTORY) p.id: 1 },
+      basePositions: ts_models.getBasePositions(2),
+      catcherCount: 1,
       timeoutSec: 15.0, // 15 seconds per run is plenty to get rich data
-      maxTowers: 100,
+      maxTowers: 90,
       seed: seed,
       onBestFound: (iteration, length) {
         final elapsed = stopwatch.elapsed;
