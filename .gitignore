@@ -10,7 +10,6 @@ track_seed_*.json
 .flutter-plugins-dependencies
 .packages
 .metadata
-build/
 
 # IDE files
 .idea/
