@@ -78,6 +78,7 @@ class _InstructionLevel {
   /// key = "x,y", value = tower height (number of tower blocks)
   final Map<String, int> newTowers;
   final Map<String, int> prevTowers;
+  final Map<String, (int, int)> fractionTowers;
   final int baseCount;
 
   const _InstructionLevel({
@@ -86,6 +87,7 @@ class _InstructionLevel {
     required this.prevPieces,
     required this.newTowers,
     required this.prevTowers,
+    required this.fractionTowers,
     required this.baseCount,
   });
 }
@@ -97,61 +99,239 @@ int _pieceLevel(PieceData p) {
   return p.cells.map((c) => c[2]).reduce(math.min);
 }
 
+bool _isCatcherStart(String key, List<PieceData> pieces) {
+  final parts = key.split(',');
+  final tx = int.parse(parts[0]);
+  final ty = int.parse(parts[1]);
+  return pieces.any((p) => p.pieceId == 19 && p.start[0] == tx && p.start[1] == ty);
+}
+
+bool _isNativeToLevel(String key, int currentZ, List<PieceData> newPieces) {
+  final parts = key.split(',');
+  final tx = int.parse(parts[0]);
+  final ty = int.parse(parts[1]);
+  for (final p in newPieces) {
+    final towerPoints = p.isSplitter ? p.outputs : [p.start, p.end];
+    for (final pt in towerPoints) {
+      if (pt[0] == tx && pt[1] == ty && pt[2] <= currentZ) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+bool _hasTrackIntersection(String key, int currentZ, List<PieceData> pieces) {
+  final parts = key.split(',');
+  final tx = int.parse(parts[0]);
+  final ty = int.parse(parts[1]);
+  for (final p in pieces) {
+    for (final cell in p.cells) {
+      if (cell[0] == tx && cell[1] == ty) {
+        if (cell[2] == currentZ + 1 || cell[2] == currentZ + 2) {
+          return true;
+        }
+      }
+    }
+  }
+  return false;
+}
+
+List<int> _getEndDirection(PieceData p, List<int> endPt) {
+  final ex = endPt[0];
+  final ey = endPt[1];
+  if (p.cells.isEmpty) return [0, 1];
+
+  int endIdx = -1;
+  for (int i = 0; i < p.cells.length; i++) {
+    if (p.cells[i][0] == ex && p.cells[i][1] == ey) {
+      endIdx = i;
+      break;
+    }
+  }
+
+  if (endIdx != -1) {
+    for (int i = endIdx - 1; i >= 0; i--) {
+      final cxVal = p.cells[i][0];
+      final cyVal = p.cells[i][1];
+      final dx = ex - cxVal;
+      final dy = ey - cyVal;
+      if ((dx.abs() + dy.abs()) == 1) {
+        return [dx, dy];
+      }
+    }
+    for (int i = endIdx + 1; i < p.cells.length; i++) {
+      final cxVal = p.cells[i][0];
+      final cyVal = p.cells[i][1];
+      final dx = ex - cxVal;
+      final dy = ey - cyVal;
+      if ((dx.abs() + dy.abs()) == 1) {
+        return [dx, dy];
+      }
+    }
+  }
+
+  final sx = p.start[0];
+  final sy = p.start[1];
+  final dx = ex - sx;
+  final dy = ey - sy;
+  if (dx.abs() > dy.abs()) {
+    return [dx.sign, 0];
+  } else if (dy.abs() > dx.abs()) {
+    return [0, dy.sign];
+  }
+  return [0, 1];
+}
+
+String? _getTowerGapSideGlobal(int gx, int gy, List<PieceData> allPieces) {
+  for (final p in allPieces) {
+    if (p.start[0] == gx && p.start[1] == gy) {
+      final dir = _getStartDirection(p);
+      final dx = dir[0];
+      final dy = dir[1];
+      if (dx == 1 && dy == 0) return 'right';
+      if (dx == -1 && dy == 0) return 'left';
+      if (dx == 0 && dy == 1) return 'bottom';
+      if (dx == 0 && dy == -1) return 'top';
+    }
+  }
+  for (final p in allPieces) {
+    if (p.end[0] == gx && p.end[1] == gy) {
+      final dir = _getEndDirection(p, p.end);
+      final dx = dir[0];
+      final dy = dir[1];
+      if (dx == 1 && dy == 0) return 'left';
+      if (dx == -1 && dy == 0) return 'right';
+      if (dx == 0 && dy == 1) return 'top';
+      if (dx == 0 && dy == -1) return 'bottom';
+    }
+    for (final out in p.outputs) {
+      if (out[0] == gx && out[1] == gy) {
+        final dir = _getEndDirection(p, out);
+        final dx = dir[0];
+        final dy = dir[1];
+        if (dx == 1 && dy == 0) return 'left';
+        if (dx == -1 && dy == 0) return 'right';
+        if (dx == 0 && dy == 1) return 'top';
+        if (dx == 0 && dy == -1) return 'bottom';
+      }
+    }
+  }
+  return null;
+}
+
 List<_InstructionLevel> _buildLevels(SolutionData solution) {
   final pieces = solution.pieces;
 
   // All distinct levels where at least one piece has its lowest point
   final levelSet = pieces.map(_pieceLevel).toSet().toList()..sort();
 
+  final allTowerPoints = <String, int>{};
+  for (final p in pieces) {
+    final towerPoints = p.isSplitter ? p.outputs : [p.start, p.end];
+    for (final pt in towerPoints) {
+      final key = '${pt[0]},${pt[1]}';
+      allTowerPoints[key] = math.max(allTowerPoints[key] ?? 0, pt[2]);
+    }
+  }
+
+  final accumulatedHeights = <String, int>{};
+
   return levelSet.map((z) {
     final newPieces = pieces.where((p) => _pieceLevel(p) == z).toList();
     final prevPieces = pieces.where((p) => _pieceLevel(p) < z).toList();
 
-    // Calculate towers for the current level z (max height min(final_height, z))
-    final allTowersNow = <String, int>{};
-    for (final p in pieces) {
-      final towerPoints = p.isSplitter ? p.outputs : [p.start, p.end];
-      for (final pt in towerPoints) {
-        final key = '${pt[0]},${pt[1]}';
-        final h = pt[2];
-        if (h > 0) {
-          final currentH = math.min(h, z);
-          allTowersNow[key] = math.max(allTowersNow[key] ?? 0, currentH);
-        }
-      }
-    }
-
-    // Calculate towers for the previous level z-1 (max height min(final_height, z-1))
-    final prevTowersMap = <String, int>{};
-    for (final p in pieces) {
-      final towerPoints = p.isSplitter ? p.outputs : [p.start, p.end];
-      for (final pt in towerPoints) {
-        final key = '${pt[0]},${pt[1]}';
-        final h = pt[2];
-        if (h > 0) {
-          final prevH = math.min(h, z - 1);
-          prevTowersMap[key] = math.max(prevTowersMap[key] ?? 0, prevH);
-        }
-      }
-    }
-
-    // "New" towers = tower columns that need more blocks at this level step
-    final newTowers = <String, int>{};
-    for (final entry in allTowersNow.entries) {
+    // Calculate the target tower height for each column at this step
+    final targetHeights = <String, int>{};
+    for (final entry in allTowerPoints.entries) {
       final key = entry.key;
-      final hNow = entry.value;
-      final hPrev = prevTowersMap[key] ?? 0;
-      final diff = hNow - hPrev;
+      final finalHeight = entry.value;
+
+      int columnTarget = math.min(finalHeight, z);
+      for (final p in pieces) {
+        if (_pieceLevel(p) <= z) {
+          final towerPoints = p.isSplitter ? p.outputs : [p.start, p.end];
+          for (final pt in towerPoints) {
+            if ('${pt[0]},${pt[1]}' == key) {
+              columnTarget = math.max(columnTarget, pt[2]);
+            }
+          }
+        }
+      }
+      if (columnTarget > 0) {
+        targetHeights[key] = columnTarget;
+      }
+    }
+
+    // New towers = tower columns that need more blocks at this level step
+    final newTowers = <String, int>{};
+    for (final entry in targetHeights.entries) {
+      final key = entry.key;
+      final targetH = entry.value;
+      final prevH = accumulatedHeights[key] ?? 0;
+
+      final targetBlocks = _isCatcherStart(key, pieces) ? math.max(0, targetH - 1) : targetH;
+      final diff = targetBlocks - prevH;
       if (diff > 0) {
         newTowers[key] = diff;
       }
     }
 
-    // Filter prevTowersMap to only keep towers that were already built at previous steps
+    // Apply the x2 alignment rule
+    final hasX2 = newTowers.values.any((d) => d >= 2);
+    if (hasX2) {
+      final keysToUpgrade = <String>[];
+      for (final entry in newTowers.entries) {
+        final key = entry.key;
+        final diff = entry.value;
+        if (diff == 1) {
+          if (!_isNativeToLevel(key, z, newPieces) && !_hasTrackIntersection(key, z, pieces)) {
+            keysToUpgrade.add(key);
+          }
+        }
+      }
+      for (final key in keysToUpgrade) {
+        newTowers[key] = 2;
+      }
+    }
+
+    // Build prevTowers from what was already built in accumulatedHeights before this step
     final prevTowers = <String, int>{};
-    for (final entry in prevTowersMap.entries) {
+    for (final entry in accumulatedHeights.entries) {
       if (entry.value > 0) {
         prevTowers[entry.key] = entry.value;
+      }
+    }
+
+    // Update accumulated heights with new blocks added at this step
+    for (final key in targetHeights.keys) {
+      final diff = newTowers[key] ?? 0;
+      if (diff > 0) {
+        accumulatedHeights[key] = (accumulatedHeights[key] ?? 0) + diff;
+      }
+    }
+
+    // Calculate fraction towers
+    final fractionTowers = <String, (int, int)>{};
+    for (final entry in newTowers.entries) {
+      final key = entry.key;
+      final diff = entry.value;
+
+      int? hTrack;
+      for (final p in prevPieces) {
+        final towerPoints = p.isSplitter ? p.outputs : [p.start, p.end];
+        for (final pt in towerPoints) {
+          if ('${pt[0]},${pt[1]}' == key) {
+            hTrack = math.max(hTrack ?? 0, pt[2]);
+          }
+        }
+      }
+
+      if (hTrack != null && hTrack < z) {
+        final bottomBlocks = _isCatcherStart(key, pieces) ? math.max(0, hTrack - 1) : hTrack;
+        if (bottomBlocks > 0) {
+          fractionTowers[key] = (diff, bottomBlocks);
+        }
       }
     }
 
@@ -161,6 +341,7 @@ List<_InstructionLevel> _buildLevels(SolutionData solution) {
       prevPieces: prevPieces,
       newTowers: newTowers,
       prevTowers: prevTowers,
+      fractionTowers: fractionTowers,
       baseCount: solution.baseCount,
     );
   }).toList();
@@ -261,6 +442,7 @@ List<int> _getStartDirection(PieceData p) {
 
 class _DiagramPainter extends CustomPainter {
   final _InstructionLevel level;
+  final List<PieceData> allPieces;
   final int gridMinX;
   final int gridMaxX;
   final int gridMinY;
@@ -272,6 +454,7 @@ class _DiagramPainter extends CustomPainter {
 
   _DiagramPainter({
     required this.level,
+    required this.allPieces,
     required this.gridMinX,
     required this.gridMaxX,
     required this.gridMinY,
@@ -282,6 +465,73 @@ class _DiagramPainter extends CustomPainter {
     required this.baseMaxY,
   });
 
+
+  void _drawTowerWithGap(
+    Canvas canvas,
+    double left,
+    double top,
+    double size,
+    double radius,
+    Paint paint,
+    String? gapSide,
+  ) {
+    if (gapSide == null) {
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(
+          Rect.fromLTWH(left, top, size, size),
+          Radius.circular(radius),
+        ),
+        paint,
+      );
+      return;
+    }
+
+    final double gapWidth = size * 0.25;
+    final path = Path();
+    final x0 = left;
+    final y0 = top;
+    final x1 = left + size;
+    final y1 = top + size;
+
+    path.moveTo(x0, y0 + radius);
+    path.arcToPoint(Offset(x0 + radius, y0), radius: Radius.circular(radius));
+
+    if (gapSide == 'top') {
+      final midX = x0 + size / 2;
+      path.lineTo(midX - gapWidth / 2, y0);
+      path.moveTo(midX + gapWidth / 2, y0);
+    }
+    path.lineTo(x1 - radius, y0);
+
+    path.arcToPoint(Offset(x1, y0 + radius), radius: Radius.circular(radius));
+
+    if (gapSide == 'right') {
+      final midY = y0 + size / 2;
+      path.lineTo(x1, midY - gapWidth / 2);
+      path.moveTo(x1, midY + gapWidth / 2);
+    }
+    path.lineTo(x1, y1 - radius);
+
+    path.arcToPoint(Offset(x1 - radius, y1), radius: Radius.circular(radius));
+
+    if (gapSide == 'bottom') {
+      final midX = x0 + size / 2;
+      path.lineTo(midX + gapWidth / 2, y1);
+      path.moveTo(midX - gapWidth / 2, y1);
+    }
+    path.lineTo(x0 + radius, y1);
+
+    path.arcToPoint(Offset(x0, y1 - radius), radius: Radius.circular(radius));
+
+    if (gapSide == 'left') {
+      final midY = y0 + size / 2;
+      path.lineTo(x0, midY + gapWidth / 2);
+      path.moveTo(x0, midY - gapWidth / 2);
+    }
+    path.lineTo(x0, y0 + radius);
+
+    canvas.drawPath(path, paint);
+  }
 
   void _drawStartTriangle(
     Canvas canvas,
@@ -620,17 +870,74 @@ class _DiagramPainter extends CustomPainter {
       final gy = int.parse(parts[1]);
       final height = entry.value;
 
-      final tRRect = RRect.fromRectAndRadius(
-        Rect.fromLTWH(
-          cx(gx) + towerInset, cy(gy) + towerInset,
-          cellSize - towerInset * 2, cellSize - towerInset * 2,
-        ),
-        Radius.circular(cellSize * 0.10),
-      );
-      canvas.drawRRect(tRRect, newTowerStroke);
+      bool isTrackDirectlyOnIt = false;
+      for (final p in level.newPieces) {
+        final towerPoints = p.isSplitter ? p.outputs : [p.start, p.end];
+        for (final pt in towerPoints) {
+          if (pt[0] == gx && pt[1] == gy) {
+            isTrackDirectlyOnIt = true;
+            break;
+          }
+        }
+        if (isTrackDirectlyOnIt) break;
+      }
 
-      // Height label if > 1 (perfectly centered, using e.g., '2x' or '3x')
-      if (height > 1) {
+      final gapSide = isTrackDirectlyOnIt ? _getTowerGapSideGlobal(gx, gy, allPieces) : null;
+
+      _drawTowerWithGap(
+        canvas,
+        cx(gx) + towerInset,
+        cy(gy) + towerInset,
+        cellSize - towerInset * 2,
+        cellSize * 0.10,
+        newTowerStroke,
+        gapSide,
+      );
+
+      // Height label or fraction notation
+      if (level.fractionTowers.containsKey(entry.key)) {
+        final frac = level.fractionTowers[entry.key]!;
+        final topVal = frac.$1;
+        final bottomVal = frac.$2;
+
+        final topPainter = TextPainter(
+          text: TextSpan(text: '$topVal', style: labelStyle),
+          textDirection: TextDirection.ltr,
+        )..layout();
+        final bottomPainter = TextPainter(
+          text: TextSpan(text: '$bottomVal', style: labelStyle),
+          textDirection: TextDirection.ltr,
+        )..layout();
+        
+        final double lineY = cy(gy) + cellSize / 2;
+        final double lineWidth = cellSize * 0.3;
+        final double lineX0 = cx(gx) + (cellSize - lineWidth) / 2;
+        final double lineX1 = lineX0 + lineWidth;
+        
+        // Paint top text
+        topPainter.paint(
+          canvas,
+          Offset(
+            cx(gx) + (cellSize - topPainter.width) / 2,
+            lineY - topPainter.height - 1.0,
+          ),
+        );
+        
+        // Paint line
+        final linePaint = Paint()
+          ..color = const Color(0xFF111111)
+          ..strokeWidth = 1.5;
+        canvas.drawLine(Offset(lineX0, lineY), Offset(lineX1, lineY), linePaint);
+        
+        // Paint bottom text
+        bottomPainter.paint(
+          canvas,
+          Offset(
+            cx(gx) + (cellSize - bottomPainter.width) / 2,
+            lineY + 1.0,
+          ),
+        );
+      } else if (height > 1) {
         final tp = TextPainter(
           text: TextSpan(text: '${height}x', style: labelStyle),
           textDirection: TextDirection.ltr,
@@ -648,6 +955,7 @@ class _DiagramPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_DiagramPainter old) =>
+      old.allPieces != allPieces ||
       old.gridMinX != gridMinX ||
       old.gridMaxX != gridMaxX ||
       old.gridMinY != gridMinY ||
@@ -999,6 +1307,7 @@ class _InstructionsOverlayState extends State<InstructionsOverlay> {
                 child: CustomPaint(
                   painter: _DiagramPainter(
                     level: level,
+                    allPieces: widget.solution.pieces,
                     gridMinX: _gridMinX,
                     gridMaxX: _gridMaxX,
                     gridMinY: _gridMinY,
@@ -1363,6 +1672,58 @@ class _InstructionsOverlayState extends State<InstructionsOverlay> {
       canvas.drawRRect(x, height - (y + h), w, h, r, r);
     }
 
+    void drawPdfTowerWithGap(double left, double top, double size, double radius, String? gapSide, double gapWidth) {
+      if (gapSide == null) {
+        canvas.drawRRect(left, height - (top + size), size, size, radius, radius);
+        return;
+      }
+      
+      final double py0 = height - top;
+      final double py1 = height - (top + size);
+      final double px0 = left;
+      final double px1 = left + size;
+      
+      final double r = radius;
+      final double c = 0.55228474983 * r;
+
+      canvas.moveTo(px0, py0 - r);
+      canvas.curveTo(px0, py0 - r + c, px0 + r - c, py0, px0 + r, py0);
+
+      if (gapSide == 'top') {
+        final midX = px0 + size / 2;
+        canvas.lineTo(midX - gapWidth / 2, py0);
+        canvas.moveTo(midX + gapWidth / 2, py0);
+      }
+      canvas.lineTo(px1 - r, py0);
+
+      canvas.curveTo(px1 - r + c, py0, px1, py0 - r + c, px1, py0 - r);
+
+      if (gapSide == 'right') {
+        final midY = py0 - size / 2;
+        canvas.lineTo(px1, midY + gapWidth / 2);
+        canvas.moveTo(px1, midY - gapWidth / 2);
+      }
+      canvas.lineTo(px1, py1 + r);
+
+      canvas.curveTo(px1, py1 + r - c, px1 - r + c, py1, px1 - r, py1);
+
+      if (gapSide == 'bottom') {
+        final midX = px0 + size / 2;
+        canvas.lineTo(midX + gapWidth / 2, py1);
+        canvas.moveTo(midX - gapWidth / 2, py1);
+      }
+      canvas.lineTo(px0 + r, py1);
+
+      canvas.curveTo(px0 + r - c, py1, px0, py1 + r - c, px0, py1 + r);
+
+      if (gapSide == 'left') {
+        final midY = py0 - size / 2;
+        canvas.lineTo(px0, midY - gapWidth / 2);
+        canvas.moveTo(px0, midY + gapWidth / 2);
+      }
+      canvas.lineTo(px0, py0 - r);
+    }
+
     // Helper: draw ellipse/circle
     void drawPdfCircle(double px, double py, double r) {
       canvas.drawEllipse(px, height - py, r, r);
@@ -1604,12 +1965,34 @@ class _InstructionsOverlayState extends State<InstructionsOverlay> {
       final gx = int.parse(parts[0]);
       final gy = int.parse(parts[1]);
 
+      bool isTrackDirectlyOnIt = false;
+      for (final p in level.newPieces) {
+        final towerPoints = p.isSplitter ? p.outputs : [p.start, p.end];
+        for (final pt in towerPoints) {
+          if (pt[0] == gx && pt[1] == gy) {
+            isTrackDirectlyOnIt = true;
+            break;
+          }
+        }
+        if (isTrackDirectlyOnIt) break;
+      }
+
+      final gapSide = isTrackDirectlyOnIt ? _getTowerGapSideGlobal(gx, gy, widget.solution.pieces) : null;
+
       // Outlines only (NO black or opaque fill!)
       canvas.setStrokeColor(PdfColor.fromInt(0xFF111111));
       canvas.setLineWidth(2.2);
       canvas.setLineCap(PdfLineCap.round);
       canvas.setLineJoin(PdfLineJoin.round);
-      drawPdfRRect(cx(gx) + towerInset, cy(gy) + towerInset, cellSize - towerInset * 2, cellSize - towerInset * 2, cellSize * 0.10);
+      
+      drawPdfTowerWithGap(
+        cx(gx) + towerInset,
+        cy(gy) + towerInset,
+        cellSize - towerInset * 2,
+        cellSize * 0.10,
+        gapSide,
+        (cellSize - towerInset * 2) * 0.25,
+      );
       canvas.strokePath();
     }
   }
@@ -1627,14 +2010,57 @@ class _InstructionsOverlayState extends State<InstructionsOverlay> {
 
     final widgets = <pw.Widget>[];
 
-    // New towers heights (> 1)
+    // New towers heights or fractions
     for (final entry in level.newTowers.entries) {
       final parts = entry.key.split(',');
       final gx = int.parse(parts[0]);
       final gy = int.parse(parts[1]);
       final heightVal = entry.value;
 
-      if (heightVal > 1) {
+      if (level.fractionTowers.containsKey(entry.key)) {
+        final frac = level.fractionTowers[entry.key]!;
+        final topVal = frac.$1;
+        final bottomVal = frac.$2;
+        widgets.add(
+          pw.Positioned(
+            left: layout.labelX(gx),
+            top: layout.labelY(gy),
+            child: pw.SizedBox(
+              width: layout.cellSize,
+              height: layout.cellSize,
+              child: pw.Center(
+                child: pw.Column(
+                  mainAxisSize: pw.MainAxisSize.min,
+                  children: [
+                    pw.Text(
+                      '$topVal',
+                      style: pw.TextStyle(
+                        fontSize: (layout.cellSize * 0.22).clamp(6.0, 11.0),
+                        fontWeight: pw.FontWeight.bold,
+                        color: PdfColor.fromInt(0xFF111111),
+                      ),
+                    ),
+                    pw.Container(
+                      width: layout.cellSize * 0.3,
+                      height: 1,
+                      color: PdfColor.fromInt(0xFF111111),
+                      margin: const pw.EdgeInsets.symmetric(vertical: 1),
+                    ),
+                    pw.Text(
+                      '$bottomVal',
+                      style: pw.TextStyle(
+                        fontSize: (layout.cellSize * 0.22).clamp(6.0, 11.0),
+                        fontWeight: pw.FontWeight.bold,
+                        color: PdfColor.fromInt(0xFF111111),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      } else if (heightVal > 1) {
         widgets.add(
           pw.Positioned(
             left: layout.labelX(gx),

@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'models.dart';
 import 'validator.dart';
 
@@ -113,9 +114,30 @@ Map<String, dynamic> solutionToDict(List<PlacedPiece> placed) {
     }
   }
 
+  int totalTowerBlocks = 0;
+  for (final entry in maxZAt.entries) {
+    final key = entry.key;
+    final h = entry.value;
+    final parts = key.split(',');
+    final tx = int.parse(parts[0]);
+    final ty = int.parse(parts[1]);
+    bool isCatcherStart = false;
+    for (final p in placed) {
+      if (p.pieceId == 19 && p.start.x == tx && p.start.y == ty) {
+        isCatcherStart = true;
+        break;
+      }
+    }
+    if (isCatcherStart) {
+      totalTowerBlocks += math.max(0, h - 1);
+    } else {
+      totalTowerBlocks += h;
+    }
+  }
+
   return {
     'piece_count': placed.length,
-    'tower_count': maxZAt.values.fold(0, (a, b) => a + b),
+    'tower_count': totalTowerBlocks,
     'tower_map': maxZAt,
     'pieces': pieces,
   };
