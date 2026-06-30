@@ -554,9 +554,15 @@
                         return;
                     }
                     const splitter = chain[splitterIdx];
-                    const stem = chain.slice(0, splitterIdx + 1);
-                    const stemPts = buildPathPoints(stem);
+                    const stemBefore = chain.slice(0, splitterIdx);
+                    const stemBeforePts = buildPathPoints(stemBefore);
+                    const s = to3(splitter.start[0], splitter.start[1], splitter.start[2]);
+                    const mid = to3(splitter.start[0], splitter.start[1], splitter.start[2] - 1);
+                    s.y += 0.025; mid.y += 0.025;
                     splitter.outputs.forEach(out => {
+                        const e = to3(out[0], out[1], out[2]);
+                        e.y += 0.025;
+                        const stemPts = [...stemBeforePts, s, mid, e];
                         const socketKey = `${out[0]},${out[1]},${out[2] - 1}`;
                         const branch = [];
                         followChainFromSocket(socketKey, allLookup, new Set(), branch);
@@ -852,20 +858,10 @@
 
                 // Fallback: straight line (splitters, single-cell paths)
                 const s = to3(p.start[0], p.start[1], p.start[2]);
-                if (p.piece_id === 6 && p.outputs.length > 0) {
-                    // Splitter: down → across arm → down at output
-                    const armZ = p.start[2] - 1;
-                    const out = p.outputs[0];
-                    const mid = to3(p.start[0], p.start[1], armZ);
-                    const e = to3(out[0], out[1], out[2]);
-                    s.y += 0.025; mid.y += 0.025; e.y += 0.025;
-                    pts.push(s, mid, e);
-                } else {
-                    const e = to3(p.end[0], p.end[1], p.end[2]);
-                    s.y += 0.025;
-                    e.y += 0.025;
-                    pts.push(s, e);
-                }
+                const e = to3(p.end[0], p.end[1], p.end[2]);
+                s.y += 0.025;
+                e.y += 0.025;
+                pts.push(s, e);
             });
             return pts;
         }
