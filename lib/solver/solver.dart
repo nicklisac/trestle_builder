@@ -277,6 +277,18 @@ class Solver {
         final cell2 = Point3(cx2, cy2, 0);
         if (validator.occupied.contains(cell0)) continue;
 
+        // Exactly one placed piece must have a track end point at the catcher's start position
+        int endsAboveCatcherStart = 0;
+        for (final p in validator.placed) {
+          for (final pt in [p.end, ...p.outputs]) {
+            if (pt.x == sx && pt.y == sy) {
+              endsAboveCatcherStart++;
+              break;
+            }
+          }
+        }
+        if (endsAboveCatcherStart != 1) continue;
+
         bool hasCollision = false;
         if (cx1 >= 0 && cx1 < baseWidth && cy1 >= 0 && cy1 < baseDepth) {
           if (validator.occupied.contains(cell1)) hasCollision = true;

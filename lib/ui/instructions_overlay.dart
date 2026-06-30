@@ -78,7 +78,6 @@ class _InstructionLevel {
   /// key = "x,y", value = tower height (number of tower blocks)
   final Map<String, int> newTowers;
   final Map<String, int> prevTowers;
-  final Map<String, (int, int)> fractionTowers;
   final int baseCount;
 
   const _InstructionLevel({
@@ -87,7 +86,6 @@ class _InstructionLevel {
     required this.prevPieces,
     required this.newTowers,
     required this.prevTowers,
-    required this.fractionTowers,
     required this.baseCount,
   });
 }
@@ -98,6 +96,9 @@ int _pieceLevel(PieceData p) {
   if (p.cells.isEmpty) return p.start[2];
   return p.cells.map((c) => c[2]).reduce(math.min);
 }
+
+// Curve piece IDs — marble path traces cells in array order
+const _curvePieceIds = {2, 5, 8, 9, 11, 12, 13, 14, 15, 17, 18};
 
 bool _isCatcherStart(String key, List<PieceData> pieces) {
   final parts = key.split(',');
@@ -142,39 +143,38 @@ List<int> _getEndDirection(PieceData p, List<int> endPt) {
   final ey = endPt[1];
   if (p.cells.isEmpty) return [0, 1];
 
-  int endIdx = -1;
+  // For splitter outputs: marble travels straight from center to output
+  if (p.isSplitter) {
+    final dx = ex - p.start[0];
+    final dy = ey - p.start[1];
+    if (dx.abs() > dy.abs()) {
+      return [dx.sign, 0];
+    } else if (dy.abs() > dx.abs()) {
+      return [0, dy.sign];
+    }
+    return [0, 1];
+  }
+
+  int startIndex = -1, endIndex = -1;
   for (int i = 0; i < p.cells.length; i++) {
-    if (p.cells[i][0] == ex && p.cells[i][1] == ey) {
-      endIdx = i;
-      break;
+    if (p.cells[i][0] == p.start[0] && p.cells[i][1] == p.start[1]) startIndex = i;
+    if (p.cells[i][0] == ex && p.cells[i][1] == ey) endIndex = i;
+  }
+  if (startIndex != -1 && endIndex != -1) {
+    final lo = math.min(startIndex, endIndex);
+    final hi = math.max(startIndex, endIndex);
+    var subCells = p.cells.sublist(lo, hi + 1);
+    if (startIndex > endIndex) subCells = subCells.reversed.toList();
+    if (subCells.length >= 2) {
+      final prev = subCells[subCells.length - 2];
+      final dx = ex - prev[0];
+      final dy = ey - prev[1];
+      if (dx != 0 || dy != 0) return [dx, dy];
     }
   }
 
-  if (endIdx != -1) {
-    for (int i = endIdx - 1; i >= 0; i--) {
-      final cxVal = p.cells[i][0];
-      final cyVal = p.cells[i][1];
-      final dx = ex - cxVal;
-      final dy = ey - cyVal;
-      if ((dx.abs() + dy.abs()) == 1) {
-        return [dx, dy];
-      }
-    }
-    for (int i = endIdx + 1; i < p.cells.length; i++) {
-      final cxVal = p.cells[i][0];
-      final cyVal = p.cells[i][1];
-      final dx = ex - cxVal;
-      final dy = ey - cyVal;
-      if ((dx.abs() + dy.abs()) == 1) {
-        return [dx, dy];
-      }
-    }
-  }
-
-  final sx = p.start[0];
-  final sy = p.start[1];
-  final dx = ex - sx;
-  final dy = ey - sy;
+  final dx = ex - p.start[0];
+  final dy = ey - p.start[1];
   if (dx.abs() > dy.abs()) {
     return [dx.sign, 0];
   } else if (dy.abs() > dx.abs()) {
@@ -198,22 +198,22 @@ String? _getTowerGapSideGlobal(int gx, int gy, List<PieceData> allPieces) {
   for (final p in allPieces) {
     if (p.end[0] == gx && p.end[1] == gy) {
       final dir = _getEndDirection(p, p.end);
-      final dx = dir[0];
-      final dy = dir[1];
-      if (dx == 1 && dy == 0) return 'left';
-      if (dx == -1 && dy == 0) return 'right';
-      if (dx == 0 && dy == 1) return 'top';
-      if (dx == 0 && dy == -1) return 'bottom';
+      final dx = -dir[0];
+      final dy = -dir[1];
+      if (dx == 1 && dy == 0) return 'right';
+      if (dx == -1 && dy == 0) return 'left';
+      if (dx == 0 && dy == 1) return 'bottom';
+      if (dx == 0 && dy == -1) return 'top';
     }
     for (final out in p.outputs) {
       if (out[0] == gx && out[1] == gy) {
         final dir = _getEndDirection(p, out);
-        final dx = dir[0];
-        final dy = dir[1];
-        if (dx == 1 && dy == 0) return 'left';
-        if (dx == -1 && dy == 0) return 'right';
-        if (dx == 0 && dy == 1) return 'top';
-        if (dx == 0 && dy == -1) return 'bottom';
+        final dx = -dir[0];
+        final dy = -dir[1];
+        if (dx == 1 && dy == 0) return 'right';
+        if (dx == -1 && dy == 0) return 'left';
+        if (dx == 0 && dy == 1) return 'bottom';
+        if (dx == 0 && dy == -1) return 'top';
       }
     }
   }
@@ -311,37 +311,12 @@ List<_InstructionLevel> _buildLevels(SolutionData solution) {
       }
     }
 
-    // Calculate fraction towers
-    final fractionTowers = <String, (int, int)>{};
-    for (final entry in newTowers.entries) {
-      final key = entry.key;
-      final diff = entry.value;
-
-      int? hTrack;
-      for (final p in prevPieces) {
-        final towerPoints = p.isSplitter ? p.outputs : [p.start, p.end];
-        for (final pt in towerPoints) {
-          if ('${pt[0]},${pt[1]}' == key) {
-            hTrack = math.max(hTrack ?? 0, pt[2]);
-          }
-        }
-      }
-
-      if (hTrack != null && hTrack < z) {
-        final bottomBlocks = _isCatcherStart(key, pieces) ? math.max(0, hTrack - 1) : hTrack;
-        if (bottomBlocks > 0) {
-          fractionTowers[key] = (diff, bottomBlocks);
-        }
-      }
-    }
-
     return _InstructionLevel(
       z: z,
       newPieces: newPieces,
       prevPieces: prevPieces,
       newTowers: newTowers,
       prevTowers: prevTowers,
-      fractionTowers: fractionTowers,
       baseCount: solution.baseCount,
     );
   }).toList();
@@ -393,43 +368,26 @@ Path _outerBoundaryPath(
 
 List<int> _getStartDirection(PieceData p) {
   if (p.cells.isEmpty) return [0, 1];
-  final sx = p.start[0];
-  final sy = p.start[1];
 
-  int startIdx = -1;
+  int startIndex = -1, endIndex = -1;
   for (int i = 0; i < p.cells.length; i++) {
-    if (p.cells[i][0] == sx && p.cells[i][1] == sy) {
-      startIdx = i;
-      break;
+    if (p.cells[i][0] == p.start[0] && p.cells[i][1] == p.start[1]) startIndex = i;
+    if (p.cells[i][0] == p.end[0] && p.cells[i][1] == p.end[1]) endIndex = i;
+  }
+  if (startIndex != -1 && endIndex != -1) {
+    final lo = math.min(startIndex, endIndex);
+    final hi = math.max(startIndex, endIndex);
+    var subCells = p.cells.sublist(lo, hi + 1);
+    if (startIndex > endIndex) subCells = subCells.reversed.toList();
+    if (subCells.length >= 2) {
+      final dx = subCells[1][0] - subCells[0][0];
+      final dy = subCells[1][1] - subCells[0][1];
+      if (dx != 0 || dy != 0) return [dx, dy];
     }
   }
 
-  if (startIdx != -1) {
-    for (int i = startIdx + 1; i < p.cells.length; i++) {
-      final cxVal = p.cells[i][0];
-      final cyVal = p.cells[i][1];
-      final dx = cxVal - sx;
-      final dy = cyVal - sy;
-      if ((dx.abs() + dy.abs()) == 1) {
-        return [dx, dy];
-      }
-    }
-    for (int i = startIdx - 1; i >= 0; i--) {
-      final cxVal = p.cells[i][0];
-      final cyVal = p.cells[i][1];
-      final dx = cxVal - sx;
-      final dy = cyVal - sy;
-      if ((dx.abs() + dy.abs()) == 1) {
-        return [dx, dy];
-      }
-    }
-  }
-
-  // Fallback: point towards the end of the piece
-  final ex = p.end[0];
-  final ey = p.end[1];
-  final dx = ex - sx;
-  final dy = ey - sy;
+  final dx = p.end[0] - p.start[0];
+  final dy = p.end[1] - p.start[1];
   if (dx.abs() > dy.abs()) {
     return [dx.sign, 0];
   } else if (dy.abs() > dx.abs()) {
@@ -486,7 +444,7 @@ class _DiagramPainter extends CustomPainter {
       return;
     }
 
-    final double gapWidth = size * 0.25;
+    final double gapWidth = size * 0.375;
     final path = Path();
     final x0 = left;
     final y0 = top;
@@ -827,26 +785,6 @@ class _DiagramPainter extends CustomPainter {
         for (final out in p.outputs) {
           _drawEndCircle(canvas, out[0], out[1], color, cellSize, cx, cy, isWashedOut: false);
         }
-
-        // For decline shapes, draw a simple black '2' in the bottom-right of the start cell
-        if (p.end[2] != p.start[2]) {
-          final declineStyle = TextStyle(
-            color: const Color(0xFF111111),
-            fontSize: (cellSize * 0.28).clamp(8.0, 13.0),
-            fontWeight: FontWeight.w900,
-          );
-          final tp = TextPainter(
-            text: TextSpan(text: '2', style: declineStyle),
-            textDirection: TextDirection.ltr,
-          )..layout();
-          tp.paint(
-            canvas,
-            Offset(
-              cx(p.start[0]) + cellSize - towerInset - tp.width - cellSize * 0.04,
-              cy(p.start[1]) + cellSize - towerInset - tp.height - cellSize * 0.03,
-            ),
-          );
-        }
       }
     }
 
@@ -860,7 +798,7 @@ class _DiagramPainter extends CustomPainter {
 
     final labelStyle = TextStyle(
       color: const Color(0xFF111111),
-      fontSize: (cellSize * 0.28).clamp(8.0, 13.0),
+      fontSize: (cellSize * 0.20).clamp(6.0, 9.0),
       fontWeight: FontWeight.w900,
     );
 
@@ -882,7 +820,7 @@ class _DiagramPainter extends CustomPainter {
         if (isTrackDirectlyOnIt) break;
       }
 
-      final gapSide = isTrackDirectlyOnIt ? _getTowerGapSideGlobal(gx, gy, allPieces) : null;
+      final gapSide = isTrackDirectlyOnIt ? _getTowerGapSideGlobal(gx, gy, level.newPieces) : null;
 
       _drawTowerWithGap(
         canvas,
@@ -894,59 +832,17 @@ class _DiagramPainter extends CustomPainter {
         gapSide,
       );
 
-      // Height label or fraction notation
-      if (level.fractionTowers.containsKey(entry.key)) {
-        final frac = level.fractionTowers[entry.key]!;
-        final topVal = frac.$1;
-        final bottomVal = frac.$2;
-
-        final topPainter = TextPainter(
-          text: TextSpan(text: '$topVal', style: labelStyle),
-          textDirection: TextDirection.ltr,
-        )..layout();
-        final bottomPainter = TextPainter(
-          text: TextSpan(text: '$bottomVal', style: labelStyle),
-          textDirection: TextDirection.ltr,
-        )..layout();
-        
-        final double lineY = cy(gy) + cellSize / 2;
-        final double lineWidth = cellSize * 0.3;
-        final double lineX0 = cx(gx) + (cellSize - lineWidth) / 2;
-        final double lineX1 = lineX0 + lineWidth;
-        
-        // Paint top text
-        topPainter.paint(
-          canvas,
-          Offset(
-            cx(gx) + (cellSize - topPainter.width) / 2,
-            lineY - topPainter.height - 1.0,
-          ),
-        );
-        
-        // Paint line
-        final linePaint = Paint()
-          ..color = const Color(0xFF111111)
-          ..strokeWidth = 1.5;
-        canvas.drawLine(Offset(lineX0, lineY), Offset(lineX1, lineY), linePaint);
-        
-        // Paint bottom text
-        bottomPainter.paint(
-          canvas,
-          Offset(
-            cx(gx) + (cellSize - bottomPainter.width) / 2,
-            lineY + 1.0,
-          ),
-        );
-      } else if (height > 1) {
+      // Height label (bottom-right corner)
+      if (height > 1) {
         final tp = TextPainter(
-          text: TextSpan(text: '${height}x', style: labelStyle),
+          text: TextSpan(text: 'x${height}', style: labelStyle),
           textDirection: TextDirection.ltr,
         )..layout();
         tp.paint(
           canvas,
           Offset(
-            cx(gx) + (cellSize - tp.width) / 2,
-            cy(gy) + (cellSize - tp.height) / 2,
+            cx(gx) + cellSize - towerInset - tp.width - cellSize * 0.04,
+            cy(gy) + cellSize - towerInset - tp.height - cellSize * 0.03,
           ),
         );
       }
@@ -1977,7 +1873,7 @@ class _InstructionsOverlayState extends State<InstructionsOverlay> {
         if (isTrackDirectlyOnIt) break;
       }
 
-      final gapSide = isTrackDirectlyOnIt ? _getTowerGapSideGlobal(gx, gy, widget.solution.pieces) : null;
+      final gapSide = isTrackDirectlyOnIt ? _getTowerGapSideGlobal(gx, gy, level.newPieces) : null;
 
       // Outlines only (NO black or opaque fill!)
       canvas.setStrokeColor(PdfColor.fromInt(0xFF111111));
@@ -1991,7 +1887,7 @@ class _InstructionsOverlayState extends State<InstructionsOverlay> {
         cellSize - towerInset * 2,
         cellSize * 0.10,
         gapSide,
-        (cellSize - towerInset * 2) * 0.25,
+        (cellSize - towerInset * 2) * 0.375,
       );
       canvas.strokePath();
     }
@@ -2009,91 +1905,20 @@ class _InstructionsOverlayState extends State<InstructionsOverlay> {
 
 
     final widgets = <pw.Widget>[];
+    final towerInset = layout.cellSize * 0.15;
 
-    // New towers heights or fractions
+    // New tower height labels
     for (final entry in level.newTowers.entries) {
       final parts = entry.key.split(',');
       final gx = int.parse(parts[0]);
       final gy = int.parse(parts[1]);
       final heightVal = entry.value;
 
-      if (level.fractionTowers.containsKey(entry.key)) {
-        final frac = level.fractionTowers[entry.key]!;
-        final topVal = frac.$1;
-        final bottomVal = frac.$2;
+      if (heightVal > 1) {
         widgets.add(
           pw.Positioned(
             left: layout.labelX(gx),
             top: layout.labelY(gy),
-            child: pw.SizedBox(
-              width: layout.cellSize,
-              height: layout.cellSize,
-              child: pw.Center(
-                child: pw.Column(
-                  mainAxisSize: pw.MainAxisSize.min,
-                  children: [
-                    pw.Text(
-                      '$topVal',
-                      style: pw.TextStyle(
-                        fontSize: (layout.cellSize * 0.22).clamp(6.0, 11.0),
-                        fontWeight: pw.FontWeight.bold,
-                        color: PdfColor.fromInt(0xFF111111),
-                      ),
-                    ),
-                    pw.Container(
-                      width: layout.cellSize * 0.3,
-                      height: 1,
-                      color: PdfColor.fromInt(0xFF111111),
-                      margin: const pw.EdgeInsets.symmetric(vertical: 1),
-                    ),
-                    pw.Text(
-                      '$bottomVal',
-                      style: pw.TextStyle(
-                        fontSize: (layout.cellSize * 0.22).clamp(6.0, 11.0),
-                        fontWeight: pw.FontWeight.bold,
-                        color: PdfColor.fromInt(0xFF111111),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        );
-      } else if (heightVal > 1) {
-        widgets.add(
-          pw.Positioned(
-            left: layout.labelX(gx),
-            top: layout.labelY(gy),
-            child: pw.SizedBox(
-              width: layout.cellSize,
-              height: layout.cellSize,
-              child: pw.Center(
-                child: pw.Text(
-                  '${heightVal}x',
-                  style: pw.TextStyle(
-                    fontSize: (layout.cellSize * 0.28).clamp(8.0, 13.0),
-                    fontWeight: pw.FontWeight.bold,
-                    color: PdfColor.fromInt(0xFF111111),
-                  ),
-                ),
-              ),
-            ),
-          ),
-        );
-      }
-    }
-
-    // Decline '2' markers
-    final towerInset = layout.cellSize * 0.15;
-    for (final p in level.newPieces) {
-      if (!p.isSplitter && p.end[2] != p.start[2]) {
-        final sx = p.start[0];
-        final sy = p.start[1];
-        widgets.add(
-          pw.Positioned(
-            left: layout.labelX(sx),
-            top: layout.labelY(sy),
             child: pw.SizedBox(
               width: layout.cellSize,
               height: layout.cellSize,
@@ -2105,9 +1930,9 @@ class _InstructionsOverlayState extends State<InstructionsOverlay> {
                     bottom: towerInset + layout.cellSize * 0.03,
                   ),
                   child: pw.Text(
-                    '2',
+                    'x${heightVal}',
                     style: pw.TextStyle(
-                      fontSize: (layout.cellSize * 0.28).clamp(8.0, 13.0),
+                      fontSize: (layout.cellSize * 0.20).clamp(6.0, 9.0),
                       fontWeight: pw.FontWeight.bold,
                       color: PdfColor.fromInt(0xFF111111),
                     ),
