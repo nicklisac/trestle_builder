@@ -822,18 +822,23 @@
                                 const isEndCell = (cell[0] === p.end[0] && cell[1] === p.end[1]);
 
                                 if (p.start[2] !== p.end[2] && !isStartCell && !isEndCell) {
-                                    const dx = p.end[0] - p.start[0];
-                                    const dy = p.end[1] - p.start[1];
-                                    const lenSq = dx * dx + dy * dy;
-                                    let t = 0;
-                                    if (lenSq > 0) {
-                                        const cx = cell[0] - p.start[0];
-                                        const cy = cell[1] - p.start[1];
-                                        const dot = cx * dx + cy * dy;
-                                        t = dot / lenSq;
+                                    // Drop pieces (10): stay at startZ until end cell
+                                    if ([10].includes(p.piece_id)) {
+                                        visualZ = p.start[2];
+                                    } else {
+                                        const dx = p.end[0] - p.start[0];
+                                        const dy = p.end[1] - p.start[1];
+                                        const lenSq = dx * dx + dy * dy;
+                                        let t = 0;
+                                        if (lenSq > 0) {
+                                            const cx = cell[0] - p.start[0];
+                                            const cy = cell[1] - p.start[1];
+                                            const dot = cx * dx + cy * dy;
+                                            t = dot / lenSq;
+                                        }
+                                        t = Math.max(0, Math.min(1, t));
+                                        visualZ = p.start[2] + t * (p.end[2] - p.start[2]);
                                     }
-                                    t = Math.max(0, Math.min(1, t));
-                                    visualZ = p.start[2] + t * (p.end[2] - p.start[2]);
                                 }
 
                                 const pt = to3(cell[0], cell[1], visualZ);
@@ -847,14 +852,20 @@
 
                 // Fallback: straight line (splitters, single-cell paths)
                 const s = to3(p.start[0], p.start[1], p.start[2]);
-                let ez = p.end[2];
-                if (p.piece_id === 6) {
-                    ez -= 1; // Splitter exits at oz - 1
+                if (p.piece_id === 6 && p.outputs.length > 0) {
+                    // Splitter: down → across arm → down at output
+                    const armZ = p.start[2] - 1;
+                    const out = p.outputs[0];
+                    const mid = to3(p.start[0], p.start[1], armZ);
+                    const e = to3(out[0], out[1], out[2]);
+                    s.y += 0.025; mid.y += 0.025; e.y += 0.025;
+                    pts.push(s, mid, e);
+                } else {
+                    const e = to3(p.end[0], p.end[1], p.end[2]);
+                    s.y += 0.025;
+                    e.y += 0.025;
+                    pts.push(s, e);
                 }
-                const e = to3(p.end[0], p.end[1], ez);
-                s.y += 0.025;
-                e.y += 0.025;
-                pts.push(s, e);
             });
             return pts;
         }
