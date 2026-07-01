@@ -566,6 +566,7 @@
                         const socketKey = `${out[0]},${out[1]},${out[2] - 1}`;
                         const branch = [];
                         followChainFromSocket(socketKey, allLookup, new Set(), branch);
+                        console.log(`[splitter] P${splitter.piece_id} out=(${out[0]},${out[1]},${out[2]}) lookup="${socketKey}" branch=${branch.length > 0 ? 'P'+branch[0].piece_id : 'NONE'}`);
                         if (branch.length > 0) {
                             marblePaths.push([...stemPts, ...buildPathPoints(branch)]);
                         }
@@ -783,8 +784,9 @@
         }
 
         function followChain(piece, lookup, visited, chain) {
-            if (visited.has(piece.piece_id)) return;
-            visited.add(piece.piece_id);
+            const uid = `${piece.start[0]},${piece.start[1]},${piece.start[2]}`;
+            if (visited.has(uid)) return;
+            visited.add(uid);
             chain.push(piece);
 
             if (piece.is_splitter) {
@@ -793,6 +795,7 @@
 
             const key = `${piece.end[0]},${piece.end[1]},${piece.end[2] - 1}`;
             const next = lookup[key];
+            console.log(`[chain] P${piece.piece_id} end=(${piece.end[0]},${piece.end[1]},${piece.end[2]}) lookup="${key}" found=${next ? 'P'+next.piece_id : 'NONE'}`);
             if (next && !visited.has(next.piece_id)) {
                 followChain(next, lookup, visited, chain);
             }
@@ -868,8 +871,9 @@
 
         function followChainFromSocket(socketKey, lookup, visited, chain) {
             const next = lookup[socketKey];
-            if (!next || visited.has(next.piece_id)) return;
-            visited.add(next.piece_id);
+            const uid = `${next.start[0]},${next.start[1]},${next.start[2]}`;
+            if (!next || visited.has(uid)) return;
+            visited.add(uid);
             chain.push(next);
             if (next.is_splitter) return;
             const nextKey = `${next.end[0]},${next.end[1]},${next.end[2] - 1}`;
